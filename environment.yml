@@ -36,3 +36,4 @@ dependencies:
     - braindecode>=0.8.1  # EEG decoding library
     - wandb # Weights and Biases
     - pyyaml # YAML for configuration
+    - h5py # HDF5 for dataset
