@@ -1,0 +1,36 @@
+
+
+experiment:
+  model: "labram" # later deepConvNet or EEGNet
+  epochs: 100
+  warmup_epochs: 0
+  seed: 111
+  LOMSO_folds: 6
+  n_fold: "all" # or 1,2,3,4,5 #TODO: implement this
+  dataset: "KU"
+  meta: true
+  optimizer: "AdamW"
+  scheduler: "CosineAnnealingLR"
+  device: "cuda"
+  shuffled_subjects:  [35, 47, 46, 37, 13, 27, 12, 32, 53, 54, 4, 40, 19, 41, 18, 42, 34, 7, 49, 9, 5, 48, 29, 15, 21, 17, 31, 45, 1, 38, 51, 8, 11, 16, 28, 44, 24, 52, 3, 26, 39, 50, 6, 23, 2, 14, 25, 20, 10, 33, 22, 43, 36, 30]
+
+
+
+labram:
+  lr: 0.001
+  weight_decay: 0.001
+  batch_size: 32
+  seed: 42
+  meta_lr: 0.001
+
+
+
+deepconvnet:
+  lr: 0.001
+  batch_size: 32
+  seed: 42
+  num_classes: 2
+  input_channels: 22
+  input_rows: 1
+
+
