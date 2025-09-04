@@ -18,7 +18,7 @@ class Metrics:
     scheduler_lr = None
 
 
-class Experiment:
+class Engine:
 
     def __init__(
         self,

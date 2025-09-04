@@ -3,8 +3,9 @@ import wandb
 import yaml
 import logging
 from datetime import datetime
+import torch
 
-from experiment import Experiment
+from engine import Engine
 from labram import load_labram
 from utils import get_optimizer_scheduler
 
@@ -31,21 +32,30 @@ logger.info(f"Experiment config: {config['experiment']}")
 if config["experiment"]["model"] == "labram":
     hyperparameters = config["labram"]
     logger.info(f"HYPERPARAMETERS for labram: {hyperparameters}")
-    model = load_labram()
+    model = load_labram(
+        lora=hyperparameters["lora"],
+        peft_config=config["peft_config"],
+    )
+
 elif config["experiment"]["model"] == "deepconvnet":
     raise ValueError("DeepConvNet is not implemented yet")
 else:
     raise ValueError("Invalid model")
 
 
-N_EPOCHS = config["experiment"]["epochs"]
-DEVICE = config["experiment"]["device"]
-BATCH_SIZE = hyperparameters["batch_size"]
-DEVICE = config["experiment"]["device"]
 SEED = config["experiment"]["seed"]
 SHUFFLED_SUBJECTS = config["experiment"]["shuffled_subjects"]
 LOMSO_FOLDS = config["experiment"]["LOMSO_folds"]
 META = config["experiment"]["meta"]
+
+N_EPOCHS = config["experiment"]["epochs"]
+DEVICE = config["experiment"]["device"]
+BATCH_SIZE = hyperparameters["batch_size"]
+# DEVICE = config["experiment"]["device"]
+if torch.cuda.is_available():
+    DEVICE = torch.device(DEVICE)
+else:
+    DEVICE = torch.device("cpu")
 
 optimizer, scheduler = get_optimizer_scheduler(
     config["experiment"]["optimizer"], config["experiment"]["scheduler"]
@@ -57,9 +67,9 @@ validation_set = None
 test_set = None
 
 
-experiment = Experiment(
+experiment = Engine(
     model=model,
-    config=config,  # for wandb
+    config=config,  # for wandb logging
     hyperparameters=hyperparameters,
     experiment_name=experiment_name,
     n_epochs=N_EPOCHS,
