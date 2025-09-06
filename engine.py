@@ -28,20 +28,22 @@ class Engine:
         experiment_name: str,
         n_epochs: int,
         device: str,
-        batch_size: int,
-        training_set,
-        validation_set,
-        test_set,
+        training_set, # DataLoader
+        validation_set, # DataLoader
+        test_set, # DataLoader
+        optimizer,
+        scheduler,
     ):
         self.model = model
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
         self.device = device
-        self.batch_size = batch_size
         self.training_set = training_set
         self.validation_set = validation_set
         self.test_set = test_set
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.wandb_run = self.wandb_setup(config)
         self.metrics = Metrics()
 
