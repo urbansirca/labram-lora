@@ -1,14 +1,15 @@
 
 
 experiment:
-  model: "eegnet" # later deepConvNet or EEGNet
-  epochs: 10
+  model: "eegnet"
+  epochs: 100
   seed: 111
   dataset: "KU"
   meta: true
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
   device: "cuda"
+  log_to_wandb: false
   shuffled_subjects:  [35, 47, 46, 37, 13, 27, 12, 32, 53, 54, 4, 40, 19, 41, 18, 42, 34, 7, 49, 9, 5, 48, 29, 15, 21, 17, 31, 45, 1, 38, 51, 8, 11, 16, 28, 44, 24, 52, 3, 26, 39, 50, 6, 23, 2, 14, 25, 20, 10, 33, 22, 43, 36, 30]
 
 data:
@@ -53,13 +54,6 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   ]
 
 eegnet:
-  dropoutRate: 0.5
-  kernLength: 64
-  F1: 8
-  F2: 16
-  D: 2
-
-eegnet_2:
   dropoutRate: 0.5
   kernLength: 64
   F1: 8

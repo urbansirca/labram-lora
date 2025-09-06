@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import yaml
 
 from engine import Engine
-from models import load_labram, EEGNet, EEGNet_2
+from models import EEGNet, load_labram
 from subject_split import KUTrialDataset, SplitConfig, SplitManager, SubjectBatchSampler
 
 
@@ -33,30 +33,15 @@ logger.info(f"Experiment config: {config['experiment']}")
 
 
 # ---------------- model ------------------
-if exp_cfg["model"] == "labram":
+model_name = exp_cfg["model"].lower()
+if model_name == "labram":
     hyperparameters = config["labram"]
     logger.info(f"HYPERPARAMETERS for labram: {hyperparameters}")
     model = load_labram(
         lora=hyperparameters["lora"],
         peft_config=config["peft_config"],
     )
-elif exp_cfg["model"] == "eegnet_2":
-    hyperparameters = config.get("eegnet_2", {})
-    chans   = data_cfg.get("input_channels", 62)
-    samples = data_cfg.get("samples", 1000)
-    num_classes = data_cfg.get("num_classes", 2)
-    model = EEGNet_2(
-        nb_classes=num_classes,
-        Chans=chans,
-        Samples=samples,
-        dropoutRate=hyperparameters.get("dropoutRate", 0.5),
-        kernLength=hyperparameters.get("kernLength", 64),
-        F1=hyperparameters.get("F1", 8),
-        D=hyperparameters.get("D", 2),
-        F2=hyperparameters.get("F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)),
-        device=exp_cfg.get("device", "cpu"),
-    )
-elif exp_cfg["model"] == "eegnet":
+elif model_name == "eegnet":
     hyperparameters = config.get("eegnet", {})
     chans   = data_cfg.get("input_channels", 62)
     samples = data_cfg.get("samples", 1000)
@@ -82,8 +67,6 @@ N_EPOCHS  = exp_cfg["epochs"]
 META = exp_cfg["meta"]
 OPTIMIZER = exp_cfg["optimizer"]
 SCHEDULER = exp_cfg["scheduler"]
-
-model.to(DEVICE)
 
 
 # ---------------- data/splits ------------
@@ -195,8 +178,19 @@ experiment = Engine(
     device=DEVICE,
     training_set=train_loader, # DataLoader
     validation_set=val_loader, # DataLoader
-    test_set=test_ds,          # DataLoader
+    test_set=test_loader,      # DataLoader
     optimizer=optimizer,
     scheduler=scheduler,
-    use_wandb=False,
+    use_wandb=exp_cfg.get("log_to_wandb", False),
 )
+
+
+if __name__ == "__main__":
+    try:
+        experiment.train()
+        experiment.test()
+    finally:
+        train_ds.close()
+        val_ds.close()
+        test_ds.close()
+        experiment.finish()

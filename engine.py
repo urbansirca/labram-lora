@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import torch
 import torch.nn as nn
@@ -16,6 +16,8 @@ class Metrics:
     val_loss: Optional[float] = None
     train_accuracy: Optional[float] = None
     val_accuracy: Optional[float] = None
+    test_loss: Optional[float] = None 
+    test_accuracy: Optional[float] = None 
     support_loss: Optional[float] = None
     query_loss: Optional[float] = None
     scheduler_lr: Optional[float] = None
@@ -37,16 +39,17 @@ class Engine:
         scheduler: Optional[_LRScheduler],
         use_wandb: bool = True,
     ):
-        self.model = model
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
-        self.device = device
+        self.device = torch.device(device) if isinstance(device, str) else device
+        self.model = model.to(self.device)
         self.training_set = training_set
         self.validation_set = validation_set
         self.test_set = test_set
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.loss_fn = nn.CrossEntropyLoss()
         self.metrics = Metrics()
 
         self.use_wandb = use_wandb
@@ -55,7 +58,7 @@ class Engine:
             import wandb
             self.wandb_run = self.wandb_setup(config)
 
-    def wandb_setup(self, config: Dict[str, Any]) -> wandb.sdk.wandb_run.Run:
+    def wandb_setup(self, config: Dict[str, Any]):
         return wandb.init(
             entity="urban-sirca-vrije-universiteit-amsterdam",
             project="EEG-FM",
@@ -76,14 +79,85 @@ class Engine:
         if self.use_wandb and self.wandb_run is not None:
             self.wandb_run.log(present)
 
+    def train_epoch(self) -> None:
+        self.model.train()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.training_set:  # expects (B,C,T), (B,), (B,)
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)  # CE needs Long labels
+
+            self.optimizer.zero_grad(set_to_none=True)
+            logits = self.model(X)            # logits, no softmax
+            loss = self.loss_fn(logits, Y)
+            loss.backward()
+            self.optimizer.step()
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        if self.scheduler is not None:
+            self.scheduler.step()
+
+        self.metrics.train_loss = total_loss / max(1, len(self.training_set))
+        self.metrics.train_accuracy = total_correct / max(1, total_count)
+        self.metrics.scheduler_lr = self.optimizer.param_groups[0]["lr"]
+
+    @torch.no_grad()
+    def validate_epoch(self) -> None:
+        self.model.eval()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.validation_set:
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)
+
+            logits = self.model(X)
+            loss = self.loss_fn(logits, Y)
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        self.metrics.val_loss = total_loss / max(1, len(self.validation_set))
+        self.metrics.val_accuracy = total_correct / max(1, total_count)
+
+
+    @torch.no_grad()
+    def test(self) -> None:
+        if self.test_set is None:
+            logger.info("No test_set provided; skipping test().")
+            return
+        self.model.eval()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.test_set:
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)
+
+            logits = self.model(X)
+            loss = self.loss_fn(logits, Y)
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        self.metrics.test_loss = total_loss / max(1, len(self.test_set))
+        self.metrics.test_accuracy = total_correct / max(1, total_count)
+
+        # log once for visibility
+        self.log_metrics()
+
     def train(self) -> None:
         for epoch in range(self.n_epochs):
+            self.metrics.epoch = epoch + 1
             self.train_epoch()
             self.validate_epoch()
             self.log_metrics()
-
-    def test(self) -> None:
-        pass
 
     def finish(self):
         if self.use_wandb and self.wandb_run is not None:

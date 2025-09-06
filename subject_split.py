@@ -9,7 +9,6 @@ import torch
 from torch.utils.data import Dataset, Sampler
 
 
-    
 @dataclass
 class SplitConfig:
     #LOMSO:
@@ -28,7 +27,6 @@ class SplitConfig:
             raise ValueError("Specify exactly one of subject_ids_leave_out OR m_leave_out.")
         if not (0.0 < self.train_proportion < 1.0):
             raise ValueError("train_proportion should be a number between 0 and 1.")
-
 
 
 class SplitManager:
@@ -53,12 +51,11 @@ class SplitManager:
         return S_train_pool, S_test
     
     def _build_train_validation_split(self) -> Tuple[List[int], List[int]]:
-        n_train  = math.ceil(len(self.S_train_pool)*self.cfg.train_proportion)
+        n_train  = math.floor(len(self.S_train_pool)*self.cfg.train_proportion)
         S_train = self.rng.sample(self.S_train_pool, n_train )
         S_val = list(set(self.S_train_pool) - set(S_train))
 
         return S_train, S_val
-
 
 
 class KUTrialDataset(Dataset):
@@ -110,6 +107,7 @@ class KUTrialDataset(Dataset):
         if self._file is not None:
             try: self._file.close()
             finally: self._file = None
+
 
 class SubjectBatchSampler(Sampler[List[int]]):
     """
@@ -170,124 +168,3 @@ class SubjectBatchSampler(Sampler[List[int]]):
             b, r = divmod(n, self.bs)
             total += b + (0 if self.drop_last or r == 0 else 1)
         return total
-
-
-# def _example():
-#     # Example subject ids
-#     subject_ids = [35,47,46,37,13,27,12,32,53,54,4,40,19,41,18,42,34,7,49,9,5,48,29,15,21,17,31,45,1,38,51,8,11,16,28,44,24,52,3,26,39,50,6,23,2,14,25,20,10,33,22,43,36,30]
-    
-#     cfg = SplitConfig(
-#         subject_ids=subject_ids,
-#         m_leave_out=None,
-#         subject_ids_leave_out=[1, 2],  # leave these out for test
-#         train_proportion=0.85,
-#         seed=2025
-#     )
-#     sm = SplitManager(cfg)
-#     print("Train subjects:", sm.S_train)
-#     print("Val subjects:", sm.S_val)
-#     print("Test subjects:", sm.S_test)
-
-#     # Paths
-#     h5_path = "/home/lovro/BCI/labram-lora/data/dataset.h5"
-
-#     train_ds = KUTrialDataset(h5_path, sm.S_train)
-#     val_ds   = KUTrialDataset(h5_path, sm.S_val)
-#     test_ds  = KUTrialDataset(h5_path, sm.S_test)
-
-#     train_i = []
-
-#     for i in train_ds._index:
-#         if i[0] not in train_i:
-#             train_i.append(i[0])
-
-#     neki = list(set(train_i) - set(sm.S_train))
-#     print(neki)
-
-    
-#     train_loader = DataLoader(
-#         train_ds,
-#         batch_sampler=SubjectBatchSampler(
-#             train_ds,
-#             batch_size=256,
-#             shuffle_subjects=True,         # or False if you want fixed order
-#             shuffle_trials=True,
-#             drop_last=False,
-#             seed=cfg.seed,
-#             # subject_order=sm.S_train,    # optionally force this exact order
-#             # max_trials_per_subject=256,  # e.g., cap per-epoch
-#         ),
-#         num_workers=0,
-#         pin_memory=False,
-#     )
-
-#     sampler=SubjectBatchSampler(
-#             train_ds,
-#             batch_size=256,
-#             shuffle_subjects=True,         # or False if you want fixed order
-#             shuffle_trials=True,
-#             drop_last=False,
-#             seed=cfg.seed,
-#             # subject_order=sm.S_train,    # optionally force this exact order
-#             # max_trials_per_subject=256,  # e.g., cap per-epoch
-#         )
-#     from pprint import pprint
-#     # --- print a quick summary ---
-#     print("=== Sampler summary ===")
-#     print(f"batch_size={sampler.bs}  shuffle_subjects={sampler.shuf_s}  "
-#         f"shuffle_trials={sampler.shuf_t}  drop_last={sampler.drop_last}  "
-#         f"max_trials_per_subject={sampler.max_trials}")
-
-#     n_subjects = len(sampler.subjects)
-#     print(f"subjects in sampler: {n_subjects}")
-#     print("first 5 subject ids:", sampler.subjects[:5])
-
-#     # trials per (first few) subjects + batches per subject
-#     def batches_for_count(n, bs, drop_last):
-#         q, r = divmod(n, bs)
-#         return q if (drop_last or r == 0) else q + 1
-
-#     print("\nper-subject stats (first 5):")
-#     for sid in sampler.subjects[:5]:
-#         n_trials = len(sampler.buckets[sid])
-#         eff_trials = n_trials if sampler.max_trials is None else min(n_trials, sampler.max_trials)
-#         n_batches = batches_for_count(eff_trials, sampler.bs, sampler.drop_last)
-#         print(f"  sid={sid:<3} trials={n_trials:<4} effective={eff_trials:<4} batches={n_batches}")
-
-#     total_trials = sum(len(v) for v in sampler.buckets.values())
-#     total_batches = len(sampler)
-#     print(f"\nTOTAL trials={total_trials}  TOTAL batches={total_batches}")
-
-#     # --- peek first few batches from the sampler itself ---
-#     print("\nfirst 3 batches (sampler-level peek):")
-#     for bi, batch in enumerate(sampler):
-#         sid0 = train_ds._index[batch[0]][0]
-#         # sanity: all indices in this batch should have the same sid
-#         same_sid = all(train_ds._index[i][0] == sid0 for i in batch)
-#         trial_ids_preview = [train_ds._index[i][1] for i in batch[:5]]
-#         print(f"  batch#{bi}: size={len(batch)} sid={sid0} same_sid={same_sid} trial_ids(first5)={trial_ids_preview}")
-#         if bi >= 2:
-#             break
-
-#     # --- build a DataLoader and fetch a single batch to see shapes ---
-#     train_loader = DataLoader(
-#         train_ds,
-#         batch_sampler=sampler,   # IMPORTANT: pass sampler here
-#         num_workers=0,           # HDF5 safer
-#         pin_memory=False,
-#     )
-
-#     for X, Y, sid in train_loader:
-#         # sid is a vector but should all be the same value in this batch
-#         print("\n=== one DataLoader batch ===")
-#         print("X.shape:", tuple(X.shape), "Y.shape:", tuple(Y.shape))
-#         print("unique sid in batch:", set(sid.tolist()))
-#         break
-
-#     # When you’re completely done (esp. in scripts), close the underlying files
-#     train_ds.close() 
-#     val_ds.close()
-#     test_ds.close()
-
-# if __name__ == "__main__":
-#     _example()
