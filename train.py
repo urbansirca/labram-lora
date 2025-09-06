@@ -1,38 +1,38 @@
 import logging
-import random
 from datetime import datetime
 
 import torch
 from torch.utils.data import DataLoader
-import wandb
 import yaml
 
 from engine import Engine
-from labram import load_labram
+from models import load_labram, EEGNet, EEGNet_2
 from subject_split import KUTrialDataset, SplitConfig, SplitManager, SubjectBatchSampler
-from utils import get_optimizer_scheduler
 
-# Configure logging to show in terminal
+
+# ---------------- logging ----------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],  # This makes logs appear in terminal
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
 
+# ---------------- config -----------------
 with open("hyperparameters.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-exp_cfg   = config.get("experiment", {})
-data_cfg  = config.get("data", {})
-samp_cfg  = config.get("sampler", {})
+exp_cfg  = config.get("experiment", {})
+data_cfg = config.get("data", {})
+samp_cfg = config.get("sampler", {})
 
-experiment_name = "_".join([exp_cfg["model"], datetime.now().strftime("%H%M%S")])
-
+experiment_name = f"{exp_cfg['model']}_{datetime.now().strftime('%H%M%S')}"
 logger.info(f"Experiment name: {experiment_name}")
 logger.info(f"Experiment config: {config['experiment']}")
 
+
+# ---------------- model ------------------
 if exp_cfg["model"] == "labram":
     hyperparameters = config["labram"]
     logger.info(f"HYPERPARAMETERS for labram: {hyperparameters}")
@@ -40,10 +40,42 @@ if exp_cfg["model"] == "labram":
         lora=hyperparameters["lora"],
         peft_config=config["peft_config"],
     )
+elif exp_cfg["model"] == "eegnet_2":
+    hyperparameters = config.get("eegnet_2", {})
+    chans   = data_cfg.get("input_channels", 62)
+    samples = data_cfg.get("samples", 1000)
+    num_classes = data_cfg.get("num_classes", 2)
+    model = EEGNet_2(
+        nb_classes=num_classes,
+        Chans=chans,
+        Samples=samples,
+        dropoutRate=hyperparameters.get("dropoutRate", 0.5),
+        kernLength=hyperparameters.get("kernLength", 64),
+        F1=hyperparameters.get("F1", 8),
+        D=hyperparameters.get("D", 2),
+        F2=hyperparameters.get("F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)),
+        device=exp_cfg.get("device", "cpu"),
+    )
+elif exp_cfg["model"] == "eegnet":
+    hyperparameters = config.get("eegnet", {})
+    chans   = data_cfg.get("input_channels", 62)
+    samples = data_cfg.get("samples", 1000)
+    classes = data_cfg.get("num_classes", 2)
+    model = EEGNet(
+        nb_classes=classes,
+        Chans=chans,
+        Samples=samples,
+        dropoutRate=hyperparameters.get("dropoutRate", 0.5),
+        kernLength=hyperparameters.get("kernLength", 64),
+        F1=hyperparameters.get("F1", 8),
+        D=hyperparameters.get("D", 2),
+        F2=hyperparameters.get("F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)),
+    )
 else:
     raise ValueError("Invalid model")
 
-# Experiment conf
+
+# ---------------- run cfg ----------------
 SEED = exp_cfg["seed"]
 DEVICE    = torch.device(exp_cfg["device"] if torch.cuda.is_available() else "cpu")
 N_EPOCHS  = exp_cfg["epochs"]
@@ -51,28 +83,21 @@ META = exp_cfg["meta"]
 OPTIMIZER = exp_cfg["optimizer"]
 SCHEDULER = exp_cfg["scheduler"]
 
-# Dataset conf
+model.to(DEVICE)
+
+
+# ---------------- data/splits ------------
 DATASET_PATH = data_cfg["path"]
 SUBJECT_IDS  = data_cfg.get("subjects") or exp_cfg["shuffled_subjects"]
 TRAIN_PROP   = data_cfg.get("train_proportion", 0.90)
 LEAVE_OUT    = data_cfg.get("leave_out")
 M_LEAVE_OUT  = data_cfg.get("m_leave_out")
 
-# Sample conf
-TRAIN_BS     = samp_cfg.get("train_batch_size", hyperparameters["batch_size"])
-EVAL_BS      = samp_cfg.get("eval_batch_size", TRAIN_BS)
-DROP_LAST    = samp_cfg.get("drop_last", False)
-SHUF_SUBJ    = samp_cfg.get("shuffle_subjects", True)
-SHUF_TRIALS  = samp_cfg.get("shuffle_trials", True)
-NUM_WORKERS  = samp_cfg.get("num_workers", 0)
-PIN_MEMORY   = samp_cfg.get("pin_memory", False)
-
-# ---- build splits ----
 split_cfg = SplitConfig(
     subject_ids=SUBJECT_IDS,
     m_leave_out=M_LEAVE_OUT,
     subject_ids_leave_out=LEAVE_OUT,
-    train_procent=TRAIN_PROP,
+    train_proportion=TRAIN_PROP,
     seed=SEED,
 )
 sm = SplitManager(split_cfg)
@@ -80,12 +105,20 @@ logger.info(f"Train subjects: {sm.S_train}")
 logger.info(f"Val subjects:   {sm.S_val}")
 logger.info(f"Test subjects:  {sm.S_test}")
 
-# ---- datasets ----
 train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
 val_ds   = KUTrialDataset(DATASET_PATH, sm.S_val)
 test_ds  = KUTrialDataset(DATASET_PATH, sm.S_test)
 
-# --- subject-pure loaders (one subject at a time) ---
+
+# ---------------- loaders ----------------
+TRAIN_BS     = samp_cfg.get("train_batch_size")
+EVAL_BS      = samp_cfg.get("eval_batch_size", TRAIN_BS)
+DROP_LAST    = samp_cfg.get("drop_last", False)
+SHUF_SUBJ    = samp_cfg.get("shuffle_subjects", True)
+SHUF_TRIALS  = samp_cfg.get("shuffle_trials", True)
+NUM_WORKERS  = samp_cfg.get("num_workers", 0)
+PIN_MEMORY   = samp_cfg.get("pin_memory", False)
+
 train_loader = DataLoader(
     train_ds,
     batch_sampler=SubjectBatchSampler(
@@ -131,9 +164,28 @@ test_loader = DataLoader(
     pin_memory=PIN_MEMORY,
 )
 
-optimizer, scheduler = get_optimizer_scheduler(OPTIMIZER, SCHEDULER)
+
+# ---------------- optim/sched ------------
+lr = float(hyperparameters.get("lr", 1e-3))
+wd = float(hyperparameters.get("weight_decay", 0.0))
+
+if OPTIMIZER.lower() == "adamw":
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
+elif OPTIMIZER.lower() == "adam":
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+else:
+    raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+
+scheduler = None
+if SCHEDULER == "CosineAnnealingLR":
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
+elif SCHEDULER in (None, "None"):
+    scheduler = None
+else:
+    raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
 
 
+# ---------------- engine -----------------
 experiment = Engine(
     model=model,
     config=config,
@@ -145,5 +197,6 @@ experiment = Engine(
     validation_set=val_loader, # DataLoader
     test_set=test_ds,          # DataLoader
     optimizer=optimizer,
-    scheduler=scheduler
+    scheduler=scheduler,
+    use_wandb=False,
 )

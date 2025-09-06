@@ -1,12 +1,9 @@
 
 
 experiment:
-  model: "labram" # later deepConvNet or EEGNet
-  epochs: 100
-  warmup_epochs: 0
+  model: "eegnet" # later deepConvNet or EEGNet
+  epochs: 10
   seed: 111
-  LOMSO_folds: 6
-  n_fold: "all" # or 1,2,3,4,5 #TODO: implement this
   dataset: "KU"
   meta: true
   optimizer: "AdamW"
@@ -15,12 +12,15 @@ experiment:
   shuffled_subjects:  [35, 47, 46, 37, 13, 27, 12, 32, 53, 54, 4, 40, 19, 41, 18, 42, 34, 7, 49, 9, 5, 48, 29, 15, 21, 17, 31, 45, 1, 38, 51, 8, 11, 16, 28, 44, 24, 52, 3, 26, 39, 50, 6, 23, 2, 14, 25, 20, 10, 33, 22, 43, 36, 30]
 
 data:
-  path: "/data/dataset.h5"      # <-- set this
+  path: "data/dataset.h5"      # <-- set this
   # choose exactly one of the two lines below:
-  # leave_out: [1, 2]               # explicit test subjects 
-  m_leave_out: 2                # OR: number of subjects to leave out at random
+  # leave_out: [1, 2]             # explicit test subjects 
+  m_leave_out: 2                  # OR: number of subjects to leave out at random
   train_proportion: 0.90          # share of train_pool that goes to TRAIN (rest is VAL)
   subjects: null                  # if null/omitted, will use experiment.shuffled_subjects
+  num_classes: 2 
+  input_channels: 62
+  num_samples: 1000
 
 sampler:
   train_batch_size: 256
@@ -52,7 +52,19 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
     "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
   ]
 
+eegnet:
+  dropoutRate: 0.5
+  kernLength: 64
+  F1: 8
+  F2: 16
+  D: 2
 
+eegnet_2:
+  dropoutRate: 0.5
+  kernLength: 64
+  F1: 8
+  F2: 16
+  D: 2
 
 deepconvnet:
   lr: 0.001

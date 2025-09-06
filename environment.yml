@@ -1,40 +1,32 @@
 name: labram-lora
 channels:
+  - pyg   
   - nvidia
   - pytorch
   - conda-forge
   - defaults
 
 dependencies:
-  # Python
   - python=3.10
-
-  # Core PyTorch ecosystem
   - pytorch>=2.0
   - torchvision>=0.15
   - torchaudio>=2.0
-  - pytorch-cuda=11.8  # or 12.1 depending on your CUDA version
-
-  # Scientific computing
-  - numpy>=1.24
-  - scipy>=1.10
-
-  # Progress bars and utilities
+  - pytorch-cuda=11.8
+  - numpy=1.26.*
+  - scipy=1.11.*
+  - scikit-learn=1.3.*
   - tqdm>=4.65
-
-  # Jupyter and development tools
   - jupyter
   - ipykernel
   - matplotlib
   - seaborn
-
-  # Package management
+  - pytorch-scatter 
   - pip
 
-  # Pip-only packages
   - pip:
-    - torcheeg  # EEG processing library (LaBraM implementation)
-    - braindecode>=0.8.1  # EEG decoding library
-    - wandb # Weights and Biases
-    - pyyaml # YAML for configuration
-    - h5py # HDF5 for dataset
+    - torcheeg
+    - braindecode>=0.8.1
+    - wandb
+    - pyyaml
+    - h5py
+    - peft
