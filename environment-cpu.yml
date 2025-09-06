@@ -17,6 +17,7 @@ dependencies:
   - torchvision=0.19.*
   - torchaudio=2.4.*
   - cpuonly
+  - wandb
   - pip
   - pip:
       - torcheeg

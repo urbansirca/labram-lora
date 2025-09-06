@@ -9,6 +9,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 logger = logging.getLogger(__name__)
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 class Metrics:
     epoch: Optional[int] = None
@@ -52,10 +56,9 @@ class Engine:
         self.loss_fn = nn.CrossEntropyLoss()
         self.metrics = Metrics()
 
-        self.use_wandb = use_wandb
+        self.use_wandb = use_wandb and (wandb is not None)
         self.wandb_run = None
         if self.use_wandb:
-            import wandb
             self.wandb_run = self.wandb_setup(config)
 
     def wandb_setup(self, config: Dict[str, Any]):
