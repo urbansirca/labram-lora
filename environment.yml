@@ -1,5 +1,6 @@
 name: labram-lora
 channels:
+  - nvidia
   - pytorch
   - conda-forge
   - defaults

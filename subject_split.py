@@ -18,7 +18,7 @@ class SplitConfig:
     subject_ids_leave_out: Optional[List[int]] = None
 
     #Train/Validation
-    train_procent: float = 0.9
+    train_proportion: float = 0.9
 
     # Reproducibility
     seed: int = 111
@@ -26,8 +26,8 @@ class SplitConfig:
     def __post_init__(self):
         if (self.subject_ids_leave_out is None) == (self.m_leave_out is None):
             raise ValueError("Specify exactly one of subject_ids_leave_out OR m_leave_out.")
-        if not (0.0 < self.train_procent < 1.0):
-            raise ValueError("train_procent should be a number between 0 and 1.")
+        if not (0.0 < self.train_proportion < 1.0):
+            raise ValueError("train_proportion should be a number between 0 and 1.")
 
 
 
@@ -53,7 +53,7 @@ class SplitManager:
         return S_train_pool, S_test
     
     def _build_train_validation_split(self) -> Tuple[List[int], List[int]]:
-        n_train  = math.ceil(len(self.S_train_pool)*self.cfg.train_procent)
+        n_train  = math.ceil(len(self.S_train_pool)*self.cfg.train_proportion)
         S_train = self.rng.sample(self.S_train_pool, n_train )
         S_val = list(set(self.S_train_pool) - set(S_train))
 
@@ -102,10 +102,7 @@ class KUTrialDataset(Dataset):
         Y_np = grp["Y"][t]  # scalar
 
         X = torch.from_numpy(X_np).float() if X_np.dtype != np.float32 else torch.from_numpy(X_np)
-        if Y.dtype in (torch.int8, torch.int16, torch.int32, torch.int64):
-            Y = Y.long()
-        else:
-            Y = Y.float()
+        Y = torch.as_tensor(Y_np, dtype=torch.long)
 
         return X, Y, sid
 
@@ -183,7 +180,7 @@ class SubjectBatchSampler(Sampler[List[int]]):
 #         subject_ids=subject_ids,
 #         m_leave_out=None,
 #         subject_ids_leave_out=[1, 2],  # leave these out for test
-#         train_procent=0.85,
+#         train_proportion=0.85,
 #         seed=2025
 #     )
 #     sm = SplitManager(cfg)
