@@ -1,0 +1,33 @@
+name: labram-lora-gpu
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy<2
+  - scipy
+  - scikit-learn
+  - pandas
+  - h5py
+  - pyyaml
+  - matplotlib
+  # PyTorch with CUDA runtime
+  - pytorch=2.4.*
+  - torchvision=0.19.*
+  - torchaudio=2.4.*
+  - pytorch-cuda=12.1
+  - pip
+  - pip:
+      - torcheeg
+      - peft
+      - transformers
+      - accelerate
+      - safetensors
+      - einops
+      # PyG deps: pull wheels built for torch==2.4.x, CUDA 12.1
+      - torch-scatter
+      - torch-sparse
+      - torch-geometric
+      - --find-links https://data.pyg.org/whl/torch-2.4.0+cu121.html
