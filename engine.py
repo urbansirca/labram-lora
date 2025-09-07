@@ -1,89 +1,167 @@
 import logging
+from typing import Any, Dict, Optional, Callable
 
-import wandb
+import torch
 import torch.nn as nn
-
+from torch.utils.data import DataLoader
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 
 logger = logging.getLogger(__name__)
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 class Metrics:
-    epoch = None
-    train_loss = None
-    val_loss = None
-    train_accuracy = None
-    val_accuracy = None
-    support_loss = None
-    query_loss = None
-    scheduler_lr = None
+    epoch: Optional[int] = None
+    train_loss: Optional[float] = None
+    val_loss: Optional[float] = None
+    train_accuracy: Optional[float] = None
+    val_accuracy: Optional[float] = None
+    test_loss: Optional[float] = None 
+    test_accuracy: Optional[float] = None 
+    support_loss: Optional[float] = None
+    query_loss: Optional[float] = None
+    scheduler_lr: Optional[float] = None
 
 
 class Engine:
-
     def __init__(
         self,
         model: nn.Module,
-        config: dict,
-        hyperparameters: dict,
+        config: Dict[str, Any],
+        hyperparameters: Dict[str, Any],
         experiment_name: str,
         n_epochs: int,
         device: str,
-        batch_size: int,
-        training_set,
-        validation_set,
-        test_set,
+        training_set: DataLoader,
+        validation_set: DataLoader,
+        test_set: DataLoader,
+        optimizer: Optimizer,
+        scheduler: Optional[_LRScheduler],
+        use_wandb: bool = True,
     ):
-        self.model = model
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
-        self.device = device
-        self.batch_size = batch_size
+        self.device = torch.device(device) if isinstance(device, str) else device
+        self.model = model.to(self.device)
         self.training_set = training_set
         self.validation_set = validation_set
         self.test_set = test_set
-        self.wandb_run = self.wandb_setup(config)
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.loss_fn = nn.CrossEntropyLoss()
         self.metrics = Metrics()
 
-    def wandb_setup(self, config):
+        self.use_wandb = use_wandb and (wandb is not None)
+        self.wandb_run = None
+        if self.use_wandb:
+            self.wandb_run = self.wandb_setup(config)
+
+    def wandb_setup(self, config: Dict[str, Any]):
         return wandb.init(
             entity="urban-sirca-vrije-universiteit-amsterdam",
             project="EEG-FM",
             name=self.experiment_name,
             config=config,
         )
+    
+    def log_metrics(self):
+        """Send metrics to console (always) and wandb (if enabled)."""
+        present = {k: v for k, v in self.metrics.__dict__.items() if v is not None}
 
-    def wandb_log(self):
-        """
-        Log metrics to wandb. Values that are not available aren't logged.
-        """
-        present_metrics = {
-            k: v for k, v in self.metrics.__dict__.items() if v is not None
-        }
-        self.wandb_run.log(present_metrics)
+        # console
+        line = [f"{k}: {v:.4f}" if isinstance(v, (int, float)) else f"{k}: {v}"
+                for k, v in present.items()]
+        logger.info(" | ".join(line))
 
-    def console_log(self):
-        """
-        Log metrics to console. Values that are not available aren't logged.
-        """
-        present_metrics = {
-            k: v for k, v in self.metrics.__dict__.items() if v is not None
-        }
-        present_metrics["epoch"] = f"{self.metrics.epoch:2d}/{self.n_epochs}"
-        present_metrics = " | ".join(
-            [f"{k}: {v:.4f}" for k, v in present_metrics.items()]
-        )
-        logger.info(present_metrics)
+        # wandb
+        if self.use_wandb and self.wandb_run is not None:
+            self.wandb_run.log(present)
 
-    def train(self):
+    def train_epoch(self) -> None:
+        self.model.train()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.training_set:  # expects (B,C,T), (B,), (B,)
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)  # CE needs Long labels
+
+            self.optimizer.zero_grad(set_to_none=True)
+            logits = self.model(X)            # logits, no softmax
+            loss = self.loss_fn(logits, Y)
+            loss.backward()
+            self.optimizer.step()
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        if self.scheduler is not None:
+            self.scheduler.step()
+
+        self.metrics.train_loss = total_loss / max(1, len(self.training_set))
+        self.metrics.train_accuracy = total_correct / max(1, total_count)
+        self.metrics.scheduler_lr = self.optimizer.param_groups[0]["lr"]
+
+    @torch.no_grad()
+    def validate_epoch(self) -> None:
+        self.model.eval()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.validation_set:
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)
+
+            logits = self.model(X)
+            loss = self.loss_fn(logits, Y)
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        self.metrics.val_loss = total_loss / max(1, len(self.validation_set))
+        self.metrics.val_accuracy = total_correct / max(1, total_count)
+
+
+    @torch.no_grad()
+    def test(self) -> None:
+        if self.test_set is None:
+            logger.info("No test_set provided; skipping test().")
+            return
+        self.model.eval()
+        total_loss, total_correct, total_count = 0.0, 0, 0
+
+        for X, Y, sid in self.test_set:
+            X = X.to(self.device, non_blocking=False)
+            Y = Y.long().to(self.device, non_blocking=False)
+
+            logits = self.model(X)
+            loss = self.loss_fn(logits, Y)
+
+            total_loss += loss.item()
+            preds = logits.argmax(dim=1)
+            total_correct += (preds == Y).sum().item()
+            total_count += Y.numel()
+
+        self.metrics.test_loss = total_loss / max(1, len(self.test_set))
+        self.metrics.test_accuracy = total_correct / max(1, total_count)
+
+        # log once for visibility
+        self.log_metrics()
+
+    def train(self) -> None:
         for epoch in range(self.n_epochs):
+            self.metrics.epoch = epoch + 1
             self.train_epoch()
             self.validate_epoch()
-            self.wandb_log()
-            self.console_log()
-
-    def test(self):
-        pass
+            self.log_metrics()
 
     def finish(self):
-        self.wandb_run.finish()
+        if self.use_wandb and self.wandb_run is not None:
+            self.wandb_run.finish()

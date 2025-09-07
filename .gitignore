@@ -187,7 +187,6 @@ outputs/
 results/
 logs/
 weights/checkpoints/
-models/
 wandb/
 
 # Temporary files
