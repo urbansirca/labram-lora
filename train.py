@@ -68,6 +68,12 @@ META = exp_cfg["meta"]
 OPTIMIZER = exp_cfg["optimizer"]
 SCHEDULER = exp_cfg["scheduler"]
 
+# set global seeds
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+
 
 # ---------------- data/splits ------------
 DATASET_PATH = data_cfg["path"]
