@@ -96,15 +96,16 @@ class Engine:
             loss.backward()
             self.optimizer.step()
 
-            total_loss += loss.item()
+            bsz = Y.size(0)
+            total_loss += loss.item() * bsz      # <- weight by batch size
             preds = logits.argmax(dim=1)
             total_correct += (preds == Y).sum().item()
-            total_count += Y.numel()
+            total_count += bsz
 
         if self.scheduler is not None:
             self.scheduler.step()
 
-        self.metrics.train_loss = total_loss / max(1, len(self.training_set))
+        self.metrics.train_loss = total_loss / max(1, total_count)
         self.metrics.train_accuracy = total_correct / max(1, total_count)
         self.metrics.scheduler_lr = self.optimizer.param_groups[0]["lr"]
 
@@ -120,12 +121,13 @@ class Engine:
             logits = self.model(X)
             loss = self.loss_fn(logits, Y)
 
-            total_loss += loss.item()
+            bsz = Y.size(0)
+            total_loss += loss.item() * bsz
             preds = logits.argmax(dim=1)
             total_correct += (preds == Y).sum().item()
-            total_count += Y.numel()
+            total_count += bsz
 
-        self.metrics.val_loss = total_loss / max(1, len(self.validation_set))
+        self.metrics.val_loss = total_loss / max(1, total_count)
         self.metrics.val_accuracy = total_correct / max(1, total_count)
 
 
@@ -144,12 +146,13 @@ class Engine:
             logits = self.model(X)
             loss = self.loss_fn(logits, Y)
 
-            total_loss += loss.item()
+            bsz = Y.size(0)
+            total_loss += loss.item() * bsz
             preds = logits.argmax(dim=1)
             total_correct += (preds == Y).sum().item()
-            total_count += Y.numel()
+            total_count += bsz
 
-        self.metrics.test_loss = total_loss / max(1, len(self.test_set))
+        self.metrics.test_loss = total_loss / max(1, total_count)
         self.metrics.test_accuracy = total_correct / max(1, total_count)
 
         # log once for visibility

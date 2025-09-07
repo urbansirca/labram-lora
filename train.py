@@ -77,7 +77,7 @@ if torch.cuda.is_available():
 
 # ---------------- data/splits ------------
 DATASET_PATH = data_cfg["path"]
-SUBJECT_IDS  = data_cfg.get("subjects") or exp_cfg["shuffled_subjects"]
+SUBJECT_IDS  = data_cfg.get("subjects") or exp_cfg["subjects_ids_list"]
 TRAIN_PROP   = data_cfg.get("train_proportion", 0.90)
 LEAVE_OUT    = data_cfg.get("leave_out")
 M_LEAVE_OUT  = data_cfg.get("m_leave_out")
@@ -107,52 +107,87 @@ SHUF_SUBJ    = samp_cfg.get("shuffle_subjects", True)
 SHUF_TRIALS  = samp_cfg.get("shuffle_trials", True)
 NUM_WORKERS  = samp_cfg.get("num_workers", 0)
 PIN_MEMORY   = samp_cfg.get("pin_memory", False)
+SAMP_TYPE    = samp_cfg.get("type", "subject_pure").lower() 
 
-train_loader = DataLoader(
-    train_ds,
-    batch_sampler=SubjectBatchSampler(
+
+# for reproducible shuffling in mixed mode
+g_train = torch.Generator().manual_seed(SEED)
+
+
+if SAMP_TYPE == "mixed":
+    # ----- Option A: mixed-subject batches (no custom sampler) -----
+    train_loader = DataLoader(
         train_ds,
         batch_size=TRAIN_BS,
-        shuffle_subjects=SHUF_SUBJ,
-        shuffle_trials=SHUF_TRIALS,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
         drop_last=DROP_LAST,
-        seed=SEED,                       
-        subject_order=sm.S_train,
-    ),
-    num_workers=NUM_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
-
-val_loader = DataLoader(
-    val_ds,
-    batch_sampler=SubjectBatchSampler(
+        generator=g_train,
+    )
+    val_loader = DataLoader(
         val_ds,
         batch_size=EVAL_BS,
-        shuffle_subjects=False, # deterministic eval
-        shuffle_trials=False,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
         drop_last=False,
-        seed=SEED,
-        subject_order=sm.S_val,
-    ),
-    num_workers=NUM_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
-
-test_loader = DataLoader(
-    test_ds,
-    batch_sampler=SubjectBatchSampler(
+    )
+    test_loader = DataLoader(
         test_ds,
         batch_size=EVAL_BS,
-        shuffle_subjects=False, # deterministic test
-        shuffle_trials=False,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
         drop_last=False,
-        seed=SEED,
-        subject_order=sm.S_test,
-    ),
-    num_workers=NUM_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
+    )
+elif SAMP_TYPE == "subject_pure":
+    train_loader = DataLoader(
+        train_ds,
+        batch_sampler=SubjectBatchSampler(
+            train_ds,
+            batch_size=TRAIN_BS,
+            shuffle_subjects=SHUF_SUBJ,
+            shuffle_trials=SHUF_TRIALS,
+            drop_last=DROP_LAST,
+            seed=SEED,                       
+            subject_order=sm.S_train,
+        ),
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+    )
 
+    val_loader = DataLoader(
+        val_ds,
+        batch_sampler=SubjectBatchSampler(
+            val_ds,
+            batch_size=EVAL_BS,
+            shuffle_subjects=False, # deterministic eval
+            shuffle_trials=False,
+            drop_last=False,
+            seed=SEED,
+            subject_order=sm.S_val,
+        ),
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+    )
+
+    test_loader = DataLoader(
+        test_ds,
+        batch_sampler=SubjectBatchSampler(
+            test_ds,
+            batch_size=EVAL_BS,
+            shuffle_subjects=False, # deterministic test
+            shuffle_trials=False,
+            drop_last=False,
+            seed=SEED,
+            subject_order=sm.S_test,
+        ),
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+    )
+else:
+    raise ValueError(f"Unknown sampler.type: {SAMP_TYPE}")
 
 # ---------------- optim/sched ------------
 lr = float(hyperparameters.get("lr", 1e-3))
