@@ -14,6 +14,7 @@ try:
 except ImportError:
     wandb = None
 
+
 class Metrics:
     epoch: Optional[int] = None
     train_loss: Optional[float] = None
@@ -102,12 +103,14 @@ class Engine:
             total_correct += (preds == Y).sum().item()
             total_count += bsz
 
-        if self.scheduler is not None:
-            self.scheduler.step()
+        
 
         self.metrics.train_loss = total_loss / max(1, total_count)
         self.metrics.train_accuracy = total_correct / max(1, total_count)
         self.metrics.scheduler_lr = self.optimizer.param_groups[0]["lr"]
+
+        if self.scheduler is not None:
+            self.scheduler.step()
 
     @torch.no_grad()
     def validate_epoch(self) -> None:
@@ -129,7 +132,6 @@ class Engine:
 
         self.metrics.val_loss = total_loss / max(1, total_count)
         self.metrics.val_accuracy = total_correct / max(1, total_count)
-
 
     @torch.no_grad()
     def test(self) -> None:
