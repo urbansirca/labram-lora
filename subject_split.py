@@ -11,12 +11,12 @@ from torch.utils.data import Dataset, Sampler
 
 @dataclass
 class SplitConfig:
-    #LOMSO:
+    # LOMSO:
     subject_ids: List[int]
     m_leave_out: Optional[int] = None
     subject_ids_leave_out: Optional[List[int]] = None
 
-    #Train/Validation
+    # Train/Validation
     train_proportion: float = 0.9
 
     # Reproducibility
@@ -24,7 +24,9 @@ class SplitConfig:
 
     def __post_init__(self):
         if (self.subject_ids_leave_out is None) == (self.m_leave_out is None):
-            raise ValueError("Specify exactly one of subject_ids_leave_out OR m_leave_out.")
+            raise ValueError(
+                "Specify exactly one of subject_ids_leave_out OR m_leave_out."
+            )
         if not (0.0 < self.train_proportion < 1.0):
             raise ValueError("train_proportion should be a number between 0 and 1.")
 
@@ -37,7 +39,7 @@ class SplitManager:
         self.rng.shuffle(self.S)
 
         # Build outer folds as lists of (train_subjects, test_subjects)
-        self.S_train_pool, self.S_test= self._build_train_test_split()
+        self.S_train_pool, self.S_test = self._build_train_test_split()
         self.S_train, self.S_val = self._build_train_validation_split()
 
     def _build_train_test_split(self) -> Tuple[List[int], List[int]]:
@@ -49,10 +51,10 @@ class SplitManager:
 
         S_train_pool = list(set(self.S) - set(S_test))
         return S_train_pool, S_test
-    
+
     def _build_train_validation_split(self) -> Tuple[List[int], List[int]]:
-        n_train  = math.floor(len(self.S_train_pool)*self.cfg.train_proportion)
-        S_train = self.rng.sample(self.S_train_pool, n_train )
+        n_train = math.floor(len(self.S_train_pool) * self.cfg.train_proportion)
+        S_train = self.rng.sample(self.S_train_pool, n_train)
         S_val = list(set(self.S_train_pool) - set(S_train))
 
         return S_train, S_val
@@ -61,8 +63,9 @@ class SplitManager:
 class KUTrialDataset(Dataset):
     """
     Flattens (subject, trial) so each __getitem__ returns one trial:
-      X[s_trial] -> (C, T), Y[s_trial] -> scalar/label
+      X[s_trial] -> (C, P, T), Y[s_trial] -> scalar/label
     """
+
     def __init__(
         self,
         dataset_path: str,
@@ -77,10 +80,23 @@ class KUTrialDataset(Dataset):
         # Build index: [(sid, trial_idx), ...]
         with h5py.File(self.dataset_path, "r") as f:
             self._index: List[Tuple[int, int]] = []
+            print(f"\n=== DATASET STRUCTURE ANALYSIS ===")
+            print(f"Dataset path: {self.dataset_path}")
+            print(f"Subject IDs: {self.subject_ids}")
+
             for sid in self.subject_ids:
                 grp = f[f"s{sid}"]
-                n_trials = grp["X"].shape[0]  # (N, C, T)
+                X_shape = grp["X"].shape
+                Y_shape = grp["Y"].shape
+                print(f"Subject {sid}: X shape = {X_shape}, Y shape = {Y_shape}")
+
+                n_trials = X_shape[0]  # (N, C, P, T)
                 self._index.extend((sid, i) for i in range(n_trials))
+
+            print(f"Total trials across all subjects: {len(self._index)}")
+            print(f"Index structure: [(subject_id, trial_idx), ...]")
+            print(f"First 5 index entries: {self._index[:5]}")
+            print("=" * 40)
 
     @property
     def file(self) -> h5py.File:
@@ -88,49 +104,64 @@ class KUTrialDataset(Dataset):
             self._file = h5py.File(self.dataset_path, "r")
         return self._file
 
-    def __len__(self): return len(self._index)
+    def __len__(self):
+        return len(self._index)
 
     def __getitem__(self, idx: int):
         import numpy as np
+
         sid, t = self._index[idx]
         grp = self.file[f"s{sid}"]
 
-        X_np = grp["X"][t]  # (C, T)
+        X_np = grp["X"][t]  # (C, P, T)
         Y_np = grp["Y"][t]  # scalar
 
-        X = torch.from_numpy(X_np).float() if X_np.dtype != np.float32 else torch.from_numpy(X_np)
+        # Print shape info for first few samples
+        if idx < 3:  # Only print for first 3 samples to avoid spam
+            print(f"Sample {idx}: Subject {sid}, Trial {t}")
+            print(f"  X_np shape: {X_np.shape}")
+            print(f"  Y_np value: {Y_np}")
+
+        X = (
+            torch.from_numpy(X_np).float()
+            if X_np.dtype != np.float32
+            else torch.from_numpy(X_np)
+        )
         Y = torch.as_tensor(Y_np, dtype=torch.long)
 
         return X, Y, sid
 
     def close(self):
         if self._file is not None:
-            try: self._file.close()
-            finally: self._file = None
+            try:
+                self._file.close()
+            finally:
+                self._file = None
 
 
 class SubjectBatchSampler(Sampler[List[int]]):
     """
     Yields batches that are pure by subject. Subject-major ordering:
     all batches for subject A, then subject B, etc. (optionally shuffled).
-    Assumes dataset._index: List[(sid, trial_idx)].
+    Assumes dataset._index: List[(sid, trial_idx)] with X shape (C, P, T).
     """
+
     def __init__(
         self,
         dataset,
         batch_size: int,
         shuffle_subjects: bool = True,
         shuffle_trials: bool = True,
-        drop_last: bool = False, # controls what happens to the final, smaller-than-batch-size chunk.
+        drop_last: bool = False,  # controls what happens to the final, smaller-than-batch-size chunk.
         seed: int = 42,
-        subject_order: List[int] | None = None,     # optional explicit order
+        subject_order: List[int] | None = None,  # optional explicit order
     ):
         super().__init__(None)
         self.ds = dataset
         self.bs = batch_size
         self.shuf_s = shuffle_subjects
         self.shuf_t = shuffle_trials
-        self.drop_last = drop_last 
+        self.drop_last = drop_last
         self.rng = random.Random(seed)
 
         # bucket dataset indices by sid
@@ -157,7 +188,7 @@ class SubjectBatchSampler(Sampler[List[int]]):
 
             # emit batches for this subject (subject-major)
             for i in range(0, len(idxs), self.bs):
-                batch = idxs[i:i + self.bs]
+                batch = idxs[i : i + self.bs]
                 if len(batch) == self.bs or not self.drop_last:
                     yield batch
 

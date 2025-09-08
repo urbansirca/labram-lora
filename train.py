@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 with open("hyperparameters.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-exp_cfg  = config.get("experiment", {})
+exp_cfg = config.get("experiment", {})
 data_cfg = config.get("data", {})
 samp_cfg = config.get("sampler", {})
 
@@ -41,9 +41,10 @@ if model_name == "labram":
         lora=hyperparameters["lora"],
         peft_config=config["peft_config"],
     )
+
 elif model_name == "eegnet":
     hyperparameters = config.get("eegnet", {})
-    chans   = data_cfg.get("input_channels", 62)
+    chans = data_cfg.get("input_channels", 62)
     samples = data_cfg.get("samples", 1000)
     classes = data_cfg.get("num_classes", 2)
     model = EEGNet(
@@ -54,7 +55,9 @@ elif model_name == "eegnet":
         kernLength=hyperparameters.get("kernLength", 64),
         F1=hyperparameters.get("F1", 8),
         D=hyperparameters.get("D", 2),
-        F2=hyperparameters.get("F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)),
+        F2=hyperparameters.get(
+            "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
+        ),
     )
 else:
     raise ValueError("Invalid model")
@@ -62,8 +65,8 @@ else:
 
 # ---------------- run cfg ----------------
 SEED = exp_cfg["seed"]
-DEVICE    = torch.device(exp_cfg["device"] if torch.cuda.is_available() else "cpu")
-N_EPOCHS  = exp_cfg["epochs"]
+DEVICE = torch.device(exp_cfg["device"] if torch.cuda.is_available() else "cpu")
+N_EPOCHS = exp_cfg["epochs"]
 META = exp_cfg["meta"]
 OPTIMIZER = exp_cfg["optimizer"]
 SCHEDULER = exp_cfg["scheduler"]
@@ -77,10 +80,11 @@ if torch.cuda.is_available():
 
 # ---------------- data/splits ------------
 DATASET_PATH = data_cfg["path"]
-SUBJECT_IDS  = data_cfg.get("subjects") or exp_cfg["subjects_ids_list"]
-TRAIN_PROP   = data_cfg.get("train_proportion", 0.90)
-LEAVE_OUT    = data_cfg.get("leave_out")
-M_LEAVE_OUT  = data_cfg.get("m_leave_out")
+print(f"DATASET_PATH: {DATASET_PATH}")
+SUBJECT_IDS = data_cfg.get("subjects") or range(1, exp_cfg["n_subjects"] + 1)
+TRAIN_PROP = data_cfg.get("train_proportion", 0.90)
+LEAVE_OUT = data_cfg.get("leave_out")
+M_LEAVE_OUT = data_cfg.get("m_leave_out")
 
 split_cfg = SplitConfig(
     subject_ids=SUBJECT_IDS,
@@ -95,19 +99,19 @@ logger.info(f"Val subjects:   {sm.S_val}")
 logger.info(f"Test subjects:  {sm.S_test}")
 
 train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
-val_ds   = KUTrialDataset(DATASET_PATH, sm.S_val)
-test_ds  = KUTrialDataset(DATASET_PATH, sm.S_test)
+val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
+test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
 
 
 # ---------------- loaders ----------------
-TRAIN_BS     = samp_cfg.get("train_batch_size")
-EVAL_BS      = samp_cfg.get("eval_batch_size", TRAIN_BS)
-DROP_LAST    = samp_cfg.get("drop_last", False)
-SHUF_SUBJ    = samp_cfg.get("shuffle_subjects", True)
-SHUF_TRIALS  = samp_cfg.get("shuffle_trials", True)
-NUM_WORKERS  = samp_cfg.get("num_workers", 0)
-PIN_MEMORY   = samp_cfg.get("pin_memory", False)
-SAMP_TYPE    = samp_cfg.get("type", "subject_pure").lower() 
+TRAIN_BS = samp_cfg.get("train_batch_size")
+EVAL_BS = samp_cfg.get("eval_batch_size", TRAIN_BS)
+DROP_LAST = samp_cfg.get("drop_last", False)
+SHUF_SUBJ = samp_cfg.get("shuffle_subjects", True)
+SHUF_TRIALS = samp_cfg.get("shuffle_trials", True)
+NUM_WORKERS = samp_cfg.get("num_workers", 0)
+PIN_MEMORY = samp_cfg.get("pin_memory", False)
+SAMP_TYPE = samp_cfg.get("type", "subject_pure").lower()
 
 
 # for reproducible shuffling in mixed mode
@@ -150,7 +154,7 @@ elif SAMP_TYPE == "subject_pure":
             shuffle_subjects=SHUF_SUBJ,
             shuffle_trials=SHUF_TRIALS,
             drop_last=DROP_LAST,
-            seed=SEED,                       
+            seed=SEED,
             subject_order=sm.S_train,
         ),
         num_workers=NUM_WORKERS,
@@ -162,7 +166,7 @@ elif SAMP_TYPE == "subject_pure":
         batch_sampler=SubjectBatchSampler(
             val_ds,
             batch_size=EVAL_BS,
-            shuffle_subjects=False, # deterministic eval
+            shuffle_subjects=False,  # deterministic eval
             shuffle_trials=False,
             drop_last=False,
             seed=SEED,
@@ -177,7 +181,7 @@ elif SAMP_TYPE == "subject_pure":
         batch_sampler=SubjectBatchSampler(
             test_ds,
             batch_size=EVAL_BS,
-            shuffle_subjects=False, # deterministic test
+            shuffle_subjects=False,  # deterministic test
             shuffle_trials=False,
             drop_last=False,
             seed=SEED,
@@ -217,12 +221,13 @@ experiment = Engine(
     experiment_name=experiment_name,
     n_epochs=N_EPOCHS,
     device=DEVICE,
-    training_set=train_loader, # DataLoader
-    validation_set=val_loader, # DataLoader
-    test_set=test_loader,      # DataLoader
+    training_set=train_loader,  # DataLoader
+    validation_set=val_loader,  # DataLoader
+    test_set=test_loader,  # DataLoader
     optimizer=optimizer,
     scheduler=scheduler,
     use_wandb=exp_cfg.get("log_to_wandb", False),
+    electrodes=data_cfg.get("electrodes"),
 )
 
 

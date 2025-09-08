@@ -10,7 +10,7 @@ import yaml
 def load_labram(lora=True, peft_config=None):
     # Load checkpoint first
     MODEL_PATH = (
-        pathlib.Path(__file__).parent
+        pathlib.Path(__file__).parent.parent
         / "weights"
         / "pretrained-models"
         / "labram-base.pth"
@@ -46,9 +46,26 @@ def load_labram(lora=True, peft_config=None):
     model.head.bias.data = nn.init.zeros_(model.head.bias.data)
 
     if lora:
+        # PEFT expects a HF-like config with .get and attributes it queries. #TODO: check if this is correct
+        class _Cfg:
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+            # make it dict-like enough for PEFT fallbacks
+            def get(self, key, default=None):
+                return getattr(self, key, default)
+
+            def to_dict(self):
+                return self.__dict__.copy()
+
+        model.config = _Cfg(
+            use_return_dict=False,  # your model returns tensors, not dicts
+            tie_word_embeddings=False,  # not relevant for LaBraM, but PEFT checks it
+        )
         lora_config = LoraConfig(
             task_type=TaskType.SEQ_CLS,  # tells PEFT where/how to inject LoRA adapters and which wrapping logic to use
-            inference_mode=False,
+            # inference_mode=False,
             r=peft_config["r"],
             lora_alpha=peft_config["lora_alpha"],
             lora_dropout=peft_config["lora_dropout"],

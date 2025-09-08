@@ -584,3 +584,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # indices = []
+    # for channel in get_ku_dataset_channels():
+    #     if channel.upper() in get_standard_1020_channels():
+    #         indices.append(get_standard_1020_channels().index(channel.upper()))
+    # # get the standard 1020 channels with indices
+    # standard_1020_channels_with_indices = [get_standard_1020_channels()[i] for i in indices]
+    # print(standard_1020_channels_with_indices)

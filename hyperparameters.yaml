@@ -1,19 +1,25 @@
 
 
 experiment:
-  model: "eegnet"
+  model: "labram"
   epochs: 100
   seed: 111
   dataset: "KU"
   meta: true
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
-  device: "cuda"
+  device: "cpu"
   log_to_wandb: false
-  subjects_ids_list:  [35, 47, 46, 37, 13, 27, 12, 32, 53, 54, 4, 40, 19, 41, 18, 42, 34, 7, 49, 9, 5, 48, 29, 15, 21, 17, 31, 45, 1, 38, 51, 8, 11, 16, 28, 44, 24, 52, 3, 26, 39, 50, 6, 23, 2, 14, 25, 20, 10, 33, 22, 43, 36, 30]
-
+  n_subjects: 54
 data:
-  path: "data/dataset.h5"      # <-- set this
+  path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
+  electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
+    "T7","C3","CZ","C4","T8","TP9","CP5","CP1","CP2","CP6","TP10","P7","P3","PZ",
+    "P4","P8","PO9","O1","OZ","O2","PO10","FC3","FC4","C5","C1","C2","C6","CP3",
+    "CPZ","CP4","P1","P2","POZ","FT9","FTT9h","TTP7h","TP7","TPP9h","FT10","FTT10h",
+    "TPP8h","TP8","TPP10h","F9","F10","AF7","AF3","AF4","AF8","PO3","PO4"]
+
+
   # choose exactly one of the two lines below:
   # leave_out: [1, 2]             # explicit test subjects 
   m_leave_out: 2                  # OR: number of subjects to leave out at random
@@ -25,8 +31,8 @@ data:
 
 sampler:
   type: "mixed" 
-  train_batch_size: 1500
-  eval_batch_size: 1500
+  train_batch_size: 32
+  eval_batch_size: 32
   drop_last: false
   shuffle_subjects: true
   shuffle_trials: true

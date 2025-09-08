@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, List
 
 import torch
 import torch.nn as nn
@@ -43,6 +43,7 @@ class Engine:
         optimizer: Optimizer,
         scheduler: Optional[_LRScheduler],
         use_wandb: bool = True,
+        electrodes: Optional[List[str]] = None,
     ):
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
@@ -56,9 +57,11 @@ class Engine:
         self.scheduler = scheduler
         self.loss_fn = nn.CrossEntropyLoss()
         self.metrics = Metrics()
+        self.electrodes = electrodes
 
         self.use_wandb = use_wandb and (wandb is not None)
         self.wandb_run = None
+        self.config = config
         if self.use_wandb:
             self.wandb_run = self.wandb_setup(config)
 
@@ -92,7 +95,10 @@ class Engine:
             Y = Y.long().to(self.device, non_blocking=False)  # CE needs Long labels
 
             self.optimizer.zero_grad(set_to_none=True)
-            logits = self.model(X)            # logits, no softmax
+            if self.config["experiment"]["model"] == "labram": # labram needs electrodes
+                logits = self.model(x=X, electrodes=self.electrodes)          
+            else:
+                logits = self.model(X)         
             loss = self.loss_fn(logits, Y)
             loss.backward()
             self.optimizer.step()
@@ -121,7 +127,7 @@ class Engine:
             X = X.to(self.device, non_blocking=False)
             Y = Y.long().to(self.device, non_blocking=False)
 
-            logits = self.model(X)
+            logits = self.model(x=X, electrodes=self.electrodes)
             loss = self.loss_fn(logits, Y)
 
             bsz = Y.size(0)
@@ -145,7 +151,7 @@ class Engine:
             X = X.to(self.device, non_blocking=False)
             Y = Y.long().to(self.device, non_blocking=False)
 
-            logits = self.model(X)
+            logits = self.model(x=X, electrodes=self.electrodes)
             loss = self.loss_fn(logits, Y)
 
             bsz = Y.size(0)
