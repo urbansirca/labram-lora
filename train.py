@@ -65,7 +65,14 @@ else:
 
 # ---------------- run cfg ----------------
 SEED = exp_cfg["seed"]
-DEVICE = torch.device(exp_cfg["device"] if torch.cuda.is_available() else "cpu")
+
+if exp_cfg["device"] == "mps":
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device(exp_cfg["device"] if torch.cuda.is_available() else "cpu")
+
+logger.info(f"USING DEVICE: {DEVICE}")
+
 N_EPOCHS = exp_cfg["epochs"]
 META = exp_cfg["meta"]
 OPTIMIZER = exp_cfg["optimizer"]
@@ -228,6 +235,8 @@ experiment = Engine(
     scheduler=scheduler,
     use_wandb=exp_cfg.get("log_to_wandb", False),
     electrodes=data_cfg.get("electrodes"),
+    save_checkpoints=exp_cfg.get("save_checkpoints", True),
+    save_checkpoints_interval=exp_cfg.get("save_checkpoints_interval", 10),
 )
 
 

@@ -8,9 +8,11 @@ experiment:
   meta: true
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
-  device: "cpu"
-  log_to_wandb: false
+  device: "cuda"
+  log_to_wandb: true
   n_subjects: 54
+  save_checkpoints: true
+  save_checkpoints_interval: 10
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
   electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
@@ -31,8 +33,8 @@ data:
 
 sampler:
   type: "mixed" 
-  train_batch_size: 32
-  eval_batch_size: 32
+  train_batch_size: 250
+  eval_batch_size: 250
   drop_last: false
   shuffle_subjects: true
   shuffle_trials: true

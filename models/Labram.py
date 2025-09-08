@@ -5,7 +5,9 @@ import pathlib
 import torch.nn as nn
 from peft import get_peft_model, LoraConfig, TaskType
 import yaml
+import logging
 
+logger = logging.getLogger(__name__)
 
 def load_labram(lora=True, peft_config=None):
     # Load checkpoint first
@@ -34,9 +36,9 @@ def load_labram(lora=True, peft_config=None):
     )  # TODO: not sure if the head should be initialized here or added on top of the model
     missing_keys, unexpected_keys = model.load_state_dict(processed_state, strict=False)
 
-    print(f"Loaded {len(processed_state)} keys from checkpoint")
-    print(f"Missing keys: {len(missing_keys)}", missing_keys)
-    print(f"Unexpected keys: {len(unexpected_keys)}", unexpected_keys)
+    logger.info(f"Loaded {len(processed_state)} keys from checkpoint")
+    logger.info(f"Missing keys: {len(missing_keys)}" + str(missing_keys))
+    logger.info(f"Unexpected keys: {len(unexpected_keys)}" + str(unexpected_keys))
 
     # # randomly initialize the head weights with xavier_uniform
     # print(

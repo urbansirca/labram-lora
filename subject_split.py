@@ -62,8 +62,7 @@ class SplitManager:
 
 class KUTrialDataset(Dataset):
     """
-    Flattens (subject, trial) so each __getitem__ returns one trial:
-      X[s_trial] -> (C, P, T), Y[s_trial] -> scalar/label
+    Optimized version with fast initialization
     """
 
     def __init__(
@@ -71,6 +70,7 @@ class KUTrialDataset(Dataset):
         dataset_path: str,
         subject_ids: List[int],
         as_float32: bool = True,
+        verbose: bool = False,  # Control debug output
     ):
         self.dataset_path = str(dataset_path)
         self.subject_ids = list(subject_ids)
@@ -80,23 +80,36 @@ class KUTrialDataset(Dataset):
         # Build index: [(sid, trial_idx), ...]
         with h5py.File(self.dataset_path, "r") as f:
             self._index: List[Tuple[int, int]] = []
-            print(f"\n=== DATASET STRUCTURE ANALYSIS ===")
-            print(f"Dataset path: {self.dataset_path}")
-            print(f"Subject IDs: {self.subject_ids}")
 
+            if verbose:
+                print(f"\n=== DATASET STRUCTURE ANALYSIS ===")
+                print(f"Dataset path: {self.dataset_path}")
+                print(f"Subject IDs: {self.subject_ids}")
+
+            # Optimized: Assume all subjects have same number of trials
+            # Check first subject to get trial count, then apply to all
+            first_sid = self.subject_ids[0]
+            first_grp = f[f"s{first_sid}"]
+            n_trials_per_subject = first_grp["X"].shape[0]
+
+            if verbose:
+                X_shape = first_grp["X"].shape
+                Y_shape = first_grp["Y"].shape
+                print(f"Detected shape per subject: X={X_shape}, Y={Y_shape}")
+                print(
+                    f"Assuming all {len(self.subject_ids)} subjects have {n_trials_per_subject} trials each"
+                )
+
+            # Fast index building - no need to access each subject's HDF5 group
             for sid in self.subject_ids:
-                grp = f[f"s{sid}"]
-                X_shape = grp["X"].shape
-                Y_shape = grp["Y"].shape
-                print(f"Subject {sid}: X shape = {X_shape}, Y shape = {Y_shape}")
+                self._index.extend((sid, i) for i in range(n_trials_per_subject))
 
-                n_trials = X_shape[0]  # (N, C, P, T)
-                self._index.extend((sid, i) for i in range(n_trials))
-
-            print(f"Total trials across all subjects: {len(self._index)}")
-            print(f"Index structure: [(subject_id, trial_idx), ...]")
-            print(f"First 5 index entries: {self._index[:5]}")
-            print("=" * 40)
+            total_trials = len(self._index)
+            if verbose:
+                print(f"Total trials across all subjects: {total_trials}")
+                print(f"Index structure: [(subject_id, trial_idx), ...]")
+                print(f"First 5 index entries: {self._index[:5]}")
+                print("=" * 40)
 
     @property
     def file(self) -> h5py.File:
@@ -115,12 +128,6 @@ class KUTrialDataset(Dataset):
 
         X_np = grp["X"][t]  # (C, P, T)
         Y_np = grp["Y"][t]  # scalar
-
-        # Print shape info for first few samples
-        if idx < 3:  # Only print for first 3 samples to avoid spam
-            print(f"Sample {idx}: Subject {sid}, Trial {t}")
-            print(f"  X_np shape: {X_np.shape}")
-            print(f"  Y_np value: {Y_np}")
 
         X = (
             torch.from_numpy(X_np).float()
