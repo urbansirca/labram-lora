@@ -9,13 +9,12 @@ from torch.optim.lr_scheduler import _LRScheduler
 import time
 import pathlib
 import yaml
+import wandb
+
+
+
 
 logger = logging.getLogger(__name__)
-
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 
 class Metrics:
@@ -49,6 +48,8 @@ class Engine:
         electrodes: Optional[List[str]] = None,
         save_checkpoints: bool = True,
         save_checkpoints_interval: int = 10,
+        non_blocking: bool = True,
+        pin_memory: bool = False,
     ):
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
@@ -63,7 +64,8 @@ class Engine:
         self.loss_fn = nn.CrossEntropyLoss()
         self.metrics = Metrics()
         self.electrodes = electrodes
-
+        self.non_blocking = non_blocking
+        self.pin_memory = pin_memory
         self.use_wandb = use_wandb and (wandb is not None)
         self.wandb_run = None
         self.config = config
@@ -75,6 +77,17 @@ class Engine:
         if self.save_checkpoints:
             self.checkpoint_path = self.setup_checkpoint()
             self.save_checkpoints_interval = save_checkpoints_interval
+        self.best_val_accuracy = (
+            0.0  # used for checkpointing, TODO: implement early stopping
+        )
+    
+    def setup_optimizations(self):
+        torch.backends.cunn.benchmark = True
+
+        # Optional: Set memory format for better performance on modern GPUs
+        # (Only if your model supports channels-last)
+        # torch.backends.cudnn.allow_tf32 = True
+        # torch.backends.cuda.matmul.allow_tf32 = True
 
     def setup_checkpoint(self):
         """Setup checkpoint of the model."""
@@ -91,20 +104,22 @@ class Engine:
 
         return path
 
-    def checkpoint(self):
+    def checkpoint(self, name: str = "checkpoint"):
         """Save checkpoint of the model."""
         torch.save(
             self.model.state_dict(),
-            f"{self.checkpoint_path}/model_{self.metrics.epoch}.pth",
+            f"{self.checkpoint_path}/model_{name}_{self.metrics.epoch}.pth",
         )
 
     def wandb_setup(self, config: Dict[str, Any]):
-        return wandb.init(
+        logger.info(f"Setting up wandb with experiment name: {self.experiment_name}")
+        wb = wandb.init(
             entity="urban-sirca-vrije-universiteit-amsterdam",
             project="EEG-FM",
             name=self.experiment_name,
             config=config,
         )
+        return wb
 
     def log_metrics(self):
         """Send metrics to console (always) and wandb (if enabled)."""
@@ -112,7 +127,7 @@ class Engine:
 
         # console
         line = [
-            f"{k}: {v:.4f}" if isinstance(v, (int, float)) else f"{k}: {v}"
+            f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
             for k, v in present.items()
         ]
 
@@ -127,20 +142,18 @@ class Engine:
 
     def train_epoch(self) -> None:
         self.model.train()
-        total_loss, total_correct, total_count = 0.0, 0, 0
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_correct = torch.tensor(0, device=self.device)
+        total_count = torch.tensor(0, device=self.device)
 
-        for i, (X, Y, sid) in enumerate(
-            self.training_set
-        ):  # expects (B,C,T), (B,), (B,)
-            X = X.to(self.device, non_blocking=False)
-            Y = Y.long().to(self.device, non_blocking=False)  # CE needs Long labels
+        for i, (X, Y, sid) in enumerate(self.training_set):
+            X = X.to(self.device, non_blocking=self.non_blocking)
+            Y = Y.long().to(self.device, non_blocking=self.non_blocking)
 
             self.optimizer.zero_grad(set_to_none=True)
 
             forward_start_time = time.time()
-            if (
-                self.config["experiment"]["model"] == "labram"
-            ):  # labram needs electrodes
+            if self.config["experiment"]["model"] == "labram":
                 logits = self.model(x=X, electrodes=self.electrodes)
             else:
                 logits = self.model(X)
@@ -152,19 +165,24 @@ class Engine:
             loss = self.loss_fn(logits, Y)
             loss.backward()
             self.optimizer.step()
-
             logger.debug(
                 f"Backward pass time for batch {i}: {time.time() - backward_start_time:.2f}s"
             )
 
+            # Don't call .item() here - just accumulate the loss tensor
+            start_time_metrics = time.time()
             bsz = Y.size(0)
-            total_loss += loss.item() * bsz  # <- weight by batch size
+            total_loss += loss * bsz  # Keep as tensor
             preds = logits.argmax(dim=1)
-            total_correct += (preds == Y).sum().item()
+            total_correct += (preds == Y).sum()
             total_count += bsz
+            logger.debug(
+                f"Metrics time for batch {i}: {time.time() - start_time_metrics:.2f}s"
+            )
 
-        self.metrics.train_loss = total_loss / max(1, total_count)
-        self.metrics.train_accuracy = total_correct / max(1, total_count)
+        # Only call .item() once at the end
+        self.metrics.train_loss = (total_loss / max(1, total_count)).item()
+        self.metrics.train_accuracy = (total_correct / max(1, total_count)).item()
         self.metrics.scheduler_lr = self.optimizer.param_groups[0]["lr"]
 
         if self.scheduler is not None:
@@ -173,23 +191,33 @@ class Engine:
     @torch.no_grad()
     def validate_epoch(self) -> None:
         self.model.eval()
-        total_loss, total_correct, total_count = 0.0, 0, 0
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_correct = torch.tensor(0, device=self.device)
+        total_count = torch.tensor(0, device=self.device)
 
-        for X, Y, sid in self.validation_set:
-            X = X.to(self.device, non_blocking=False)
-            Y = Y.long().to(self.device, non_blocking=False)
+        for i, (X, Y, sid) in enumerate(self.validation_set):
+            start_time_validate = time.time()
+            X = X.to(self.device, non_blocking=self.non_blocking)
+            Y = Y.long().to(self.device, non_blocking=self.non_blocking)
 
             logits = self.model(x=X, electrodes=self.electrodes)
             loss = self.loss_fn(logits, Y)
-
+            logger.debug(
+                f"Validation loss time for batch {i}: {time.time() - start_time_validate:.2f}s"
+            )
+            start_time_metrics = time.time()
             bsz = Y.size(0)
-            total_loss += loss.item() * bsz
+            total_loss += loss * bsz
             preds = logits.argmax(dim=1)
-            total_correct += (preds == Y).sum().item()
+            total_correct += (preds == Y).sum()
             total_count += bsz
 
-        self.metrics.val_loss = total_loss / max(1, total_count)
-        self.metrics.val_accuracy = total_correct / max(1, total_count)
+            logger.debug(
+                f"Metrics time for batch {i}: {time.time() - start_time_metrics:.2f}s"
+            )
+
+        self.metrics.val_loss = (total_loss / max(1, total_count)).item()
+        self.metrics.val_accuracy = (total_correct / max(1, total_count)).item()
 
     @torch.no_grad()
     def test(self) -> None:
@@ -197,23 +225,34 @@ class Engine:
             logger.info("No test_set provided; skipping test().")
             return
         self.model.eval()
-        total_loss, total_correct, total_count = 0.0, 0, 0
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_correct = torch.tensor(0, device=self.device)
+        total_count = torch.tensor(0, device=self.device)
 
-        for X, Y, sid in self.test_set:
-            X = X.to(self.device, non_blocking=False)
-            Y = Y.long().to(self.device, non_blocking=False)
+        for i, (X, Y, sid) in enumerate(self.test_set):
+            start_time_test = time.time()
+            X = X.to(self.device, non_blocking=self.non_blocking)
+            Y = Y.long().to(self.device, non_blocking=self.non_blocking)
 
             logits = self.model(x=X, electrodes=self.electrodes)
             loss = self.loss_fn(logits, Y)
+            logger.debug(
+                f"Test loss time for batch {i}: {time.time() - start_time_test:.2f}s"
+            )
+            start_time_metrics = time.time()
 
             bsz = Y.size(0)
-            total_loss += loss.item() * bsz
+            total_loss += loss * bsz
             preds = logits.argmax(dim=1)
-            total_correct += (preds == Y).sum().item()
+            total_correct += (preds == Y).sum()
             total_count += bsz
 
-        self.metrics.test_loss = total_loss / max(1, total_count)
-        self.metrics.test_accuracy = total_correct / max(1, total_count)
+            logger.debug(
+                f"Metrics time for batch {i}: {time.time() - start_time_metrics:.2f}s"
+            )
+
+        self.metrics.test_loss = (total_loss / max(1, total_count)).item()
+        self.metrics.test_accuracy = (total_correct / max(1, total_count)).item()
 
         # log once for visibility
         self.log_metrics()
@@ -224,8 +263,21 @@ class Engine:
             self.train_epoch()
             self.validate_epoch()
             self.log_metrics()
-            if self.save_checkpoints and epoch % self.save_checkpoints_interval == 0:
-                self.checkpoint()
+
+            if (
+                self.metrics.val_accuracy > self.best_val_accuracy
+                and self.metrics.epoch > self.save_checkpoints_interval
+            ):
+                self.best_val_accuracy = self.metrics.val_accuracy
+                self.checkpoint(name="best_val_checkpoint")
+            if (
+                self.save_checkpoints
+                and self.metrics.epoch % self.save_checkpoints_interval == 0
+            ):
+                self.checkpoint(name="checkpoint")
+
+        # save the final checkpoint
+        self.checkpoint(name="final_checkpoint")
 
     def finish(self):
         if self.use_wandb and self.wandb_run is not None:

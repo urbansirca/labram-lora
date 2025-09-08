@@ -8,6 +8,7 @@ import yaml
 from engine import Engine
 from models import EEGNet, load_labram
 from subject_split import KUTrialDataset, SplitConfig, SplitManager, SubjectBatchSampler
+from test_fsl import test_few_shot
 
 
 # ---------------- logging ----------------
@@ -26,6 +27,7 @@ with open("hyperparameters.yaml", "r") as f:
 exp_cfg = config.get("experiment", {})
 data_cfg = config.get("data", {})
 samp_cfg = config.get("sampler", {})
+
 
 experiment_name = f"{exp_cfg['model']}_{datetime.now().strftime('%H%M%S')}"
 logger.info(f"Experiment name: {experiment_name}")
@@ -118,6 +120,7 @@ SHUF_SUBJ = samp_cfg.get("shuffle_subjects", True)
 SHUF_TRIALS = samp_cfg.get("shuffle_trials", True)
 NUM_WORKERS = samp_cfg.get("num_workers", 0)
 PIN_MEMORY = samp_cfg.get("pin_memory", False)
+PERSISTENT_WORKERS = samp_cfg.get("persistent_workers", True)
 SAMP_TYPE = samp_cfg.get("type", "subject_pure").lower()
 
 
@@ -135,6 +138,7 @@ if SAMP_TYPE == "mixed":
         pin_memory=PIN_MEMORY,
         drop_last=DROP_LAST,
         generator=g_train,
+        persistent_workers=PERSISTENT_WORKERS,
     )
     val_loader = DataLoader(
         val_ds,
@@ -143,6 +147,7 @@ if SAMP_TYPE == "mixed":
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
         drop_last=False,
+        persistent_workers=PERSISTENT_WORKERS,
     )
     test_loader = DataLoader(
         test_ds,
@@ -151,6 +156,7 @@ if SAMP_TYPE == "mixed":
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
         drop_last=False,
+        persistent_workers=PERSISTENT_WORKERS,
     )
 elif SAMP_TYPE == "subject_pure":
     train_loader = DataLoader(
@@ -214,6 +220,10 @@ else:
 scheduler = None
 if SCHEDULER == "CosineAnnealingLR":
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
+elif SCHEDULER == "CosineAnnealingWarmRestarts":
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=N_EPOCHS // 2, T_mult=2
+    )
 elif SCHEDULER in (None, "None"):
     scheduler = None
 else:
@@ -237,11 +247,14 @@ experiment = Engine(
     electrodes=data_cfg.get("electrodes"),
     save_checkpoints=exp_cfg.get("save_checkpoints", True),
     save_checkpoints_interval=exp_cfg.get("save_checkpoints_interval", 10),
+    non_blocking=cfg.get("non_blocking", True),
+    pin_memory=PIN_MEMORY,
 )
 
 
 if __name__ == "__main__":
     try:
+        experiment.setup_optimizations()
         experiment.train()
         experiment.test()
     finally:
@@ -249,3 +262,5 @@ if __name__ == "__main__":
         val_ds.close()
         test_ds.close()
         experiment.finish()
+
+    # test_few_shot(model, test_loader, n_shots=10, n_epochs=10)
