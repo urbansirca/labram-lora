@@ -13,14 +13,27 @@ experiment:
   device: "cuda"
   log_to_wandb: true
   n_subjects: 54
-  save_checkpoints: true
-  save_checkpoints_interval: 10
+
+  save_regular_checkpoints: false
+  save_regular_checkpoints_interval: 10
+  save_final_checkpoint: true
+  save_best_checkpoints: true
+
+  early_stopping: true
+  early_stopping_patience: 10
+  early_stopping_delta: 0.001
+  early_stopping_metric: "val_accuracy"
+
+  # train after stopping
+  train_after_stopping: true # if true, will train the model after early stopping
+  train_after_stopping_epochs: 10
 
 optimizations:
   non_blocking: true
   pin_memory: true
   persistent_workers: true
   num_workers: 4 # if persistent_workers is true, then num_workers should be greater than 0
+  use_amp: true # use automatic mixed precision
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
   electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",

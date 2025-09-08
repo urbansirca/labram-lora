@@ -34,11 +34,7 @@ NUM_WORKERS = opt_cfg.get("num_workers", 0)
 PIN_MEMORY = opt_cfg.get("pin_memory", False)
 PERSISTENT_WORKERS = opt_cfg.get("persistent_workers", False)
 NON_BLOCKING = opt_cfg.get("non_blocking", False)
-
-
-experiment_name = f"{exp_cfg['model']}_{datetime.now().strftime('%H%M%S')}"
-logger.info(f"Experiment name: {experiment_name}")
-logger.info(f"Experiment config: {config['experiment']}")
+USE_AMP = opt_cfg.get("use_amp", False)
 
 
 # ---------------- model ------------------
@@ -73,6 +69,22 @@ else:
 
 
 # ---------------- run cfg ----------------
+
+name_list = [
+    f"{exp_cfg['model']}",
+    f"lr{hyperparameters['lr']}",
+    f"wd{hyperparameters['weight_decay']}",
+    exp_cfg["optimizer"],
+    exp_cfg["scheduler"],
+    datetime.now().strftime("%H%M%S"),
+]
+experiment_name = "_".join(name_list)
+
+
+logger.info(f"Experiment name: {experiment_name}")
+logger.info(f"Experiment config: {config['experiment']}")
+
+
 SEED = exp_cfg["seed"]
 
 if exp_cfg["device"] == "mps":
@@ -117,6 +129,7 @@ logger.info(f"Test subjects:  {sm.S_test}")
 train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
 val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
 test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
+train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val)
 
 
 # ---------------- loaders ----------------
@@ -160,6 +173,16 @@ if SAMP_TYPE == "mixed":
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
         drop_last=False,
+        persistent_workers=PERSISTENT_WORKERS,
+    )
+    train_after_stopping_loader = DataLoader(
+        train_ds,
+        batch_size=TRAIN_BS,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+        drop_last=DROP_LAST,
+        generator=g_train,
         persistent_workers=PERSISTENT_WORKERS,
     )
 elif SAMP_TYPE == "subject_pure":
@@ -207,6 +230,16 @@ elif SAMP_TYPE == "subject_pure":
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
     )
+    train_after_stopping_loader = DataLoader(
+        train_ds,
+        batch_size=TRAIN_BS,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+        drop_last=DROP_LAST,
+        generator=g_train,
+        persistent_workers=PERSISTENT_WORKERS,
+    )
 else:
     raise ValueError(f"Unknown sampler.type: {SAMP_TYPE}")
 
@@ -247,6 +280,7 @@ experiment = Engine(
     training_set=train_loader,  # DataLoader
     validation_set=val_loader,  # DataLoader
     test_set=test_loader,  # DataLoader
+    train_after_stopping_set=train_after_stopping_loader,  # Dataloader
     optimizer=optimizer,
     scheduler=scheduler,
     use_wandb=exp_cfg.get("log_to_wandb", False),
@@ -255,6 +289,7 @@ experiment = Engine(
     save_checkpoints_interval=exp_cfg.get("save_checkpoints_interval", 10),
     non_blocking=NON_BLOCKING,
     pin_memory=PIN_MEMORY,
+    use_amp=USE_AMP,
 )
 
 
