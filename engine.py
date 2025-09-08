@@ -85,6 +85,9 @@ class Engine:
         self.save_regular_checkpoints = config["experiment"]["save_regular_checkpoints"]
         self.save_final_checkpoint = config["experiment"]["save_final_checkpoint"]
         self.save_best_checkpoints = config["experiment"]["save_best_checkpoints"]
+        self.save_regular_checkpoints_interval = config["experiment"][
+                "save_regular_checkpoints_interval"
+            ]
         if any(
             [
                 self.save_regular_checkpoints,
@@ -93,9 +96,7 @@ class Engine:
             ]
         ):
             self.checkpoint_path = self.setup_checkpoint()
-            self.save_regular_checkpoints_interval = config["experiment"][
-                "save_regular_checkpoints_interval"
-            ]
+            
 
         self.best_val_accuracy = 0.0
         self.best_val_loss = np.inf
@@ -105,7 +106,6 @@ class Engine:
         self.early_stopping = config["experiment"]["early_stopping"]
         self.early_stopping_patience = config["experiment"]["early_stopping_patience"]
         self.early_stopping_delta = config["experiment"]["early_stopping_delta"]
-        self.early_stopping_metric = config["experiment"]["early_stopping_metric"]
 
         self.train_after_stopping = config["experiment"]["train_after_stopping"]
         self.train_after_stopping_epochs = config["experiment"][
@@ -113,7 +113,6 @@ class Engine:
         ]
 
         self.use_amp = use_amp  # use automatic mixed precision
-        self.scaler = torch.amp.GradScaler(device=self.device) if self.use_amp else None
 
     def setup_optimizations(self):
         torch.backends.cudnn.benchmark = True
@@ -145,12 +144,13 @@ class Engine:
             f"{self.checkpoint_path}/{name}",
         )
 
-    def save_regular_checkpoints(self, joined: bool = False):
+    def save_regular_checkpoint(self, joined: bool = False):
         if (
             self.save_regular_checkpoints
             and self.metrics.epoch % self.save_regular_checkpoints_interval == 0
         ):
-            name = f"checkpoint_{'JOINED' if joined else ''}_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
+            joined_txt = "JOINED" if joined else ""
+            name = f"checkpoint_{joined_txt}_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
             self.checkpoint(name=name)
 
     def wandb_setup(self, config: Dict[str, Any]):
@@ -201,22 +201,16 @@ class Engine:
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
                         logits = self.model(X)
-
-                    backward_start_time = time.time()
-                    loss = self.loss_fn(logits, Y)
-                    self.scaler.scale(loss).backward()
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
             else:
                 if self.config["experiment"]["model"] == "labram":
                     logits = self.model(x=X, electrodes=self.electrodes)
                 else:
                     logits = self.model(X)
 
-                backward_start_time = time.time()
-                loss = self.loss_fn(logits, Y)
-                loss.backward()
-                self.optimizer.step()
+            backward_start_time = time.time()
+            loss = self.loss_fn(logits, Y)
+            loss.backward()
+            self.optimizer.step()
 
             # Don't call .item() here - just accumulate the loss tensor
             start_time_metrics = time.time()
@@ -250,62 +244,52 @@ class Engine:
                     break
 
             # ---------------- save regular checkpoints ----------------
-            self.save_regular_checkpoints(joined=False)
+            self.save_regular_checkpoint(joined=False)
 
         # ---------------- save the final checkpoint ----------------
         if self.save_final_checkpoint and not self.train_after_stopping:
             name = f"final_checkpoint_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
             self.checkpoint(name=name)
-
+        
         # ---------------- train after stopping ----------------
         if self.train_after_stopping:
+            logger.info(f"Training after stopping for {self.train_after_stopping_epochs} epochs")
+            self.metrics.val_accuracy = None # set to None to avoid confusion
+            self.metrics.val_loss = None # set to None to avoid confusion
             for epoch in range(self.train_after_stopping_epochs):
                 self.metrics.epoch += 1
                 self.train_epoch(self.train_after_stopping_set)
                 self.log_metrics()
 
-                if self.metrics.val_loss <= self.best_val_loss:
+                if self.metrics.train_loss <= self.best_val_loss: # use train_loss because val_loss is None
                     logger.info(
                         f"Training after stopping stopped at epoch {epoch} because target loss was reached"
                     )
                     break
-                self.save_regular_checkpoints(joined=True)
+                self.save_regular_checkpoint(joined=True)
 
             self.checkpoint(
-                name=f"FINAL_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
+                name=f"FINAL_e{self.metrics.epoch}.pth"
             )
 
     def check_early_stopping(self) -> bool:
         """Check if early stopping criteria is met. Returns True if should stop."""
-
-        if self.early_stopping_metric == "val_loss":
-            current_metric = self.metrics.val_loss
-            is_better = current_metric < (
-                self.best_metric - self.early_stopping_min_delta
-            )
-        elif self.early_stopping_metric == "val_accuracy":
-            current_metric = self.metrics.val_accuracy
-            is_better = current_metric > (
-                self.best_metric + self.early_stopping_min_delta
-            )
-        else:
-            raise ValueError(
-                f"Unknown early stopping monitor: {self.early_stopping_metric}"
-            )
-
+       
+        is_better = self.metrics.val_loss < (
+            self.best_val_loss - self.early_stopping_delta
+        )
+       
         if is_better:
-            self.best_metric = current_metric
+            self.best_val_accuracy = self.metrics.val_accuracy
+            self.best_val_loss = self.metrics.val_loss
+            self.best_val_epoch = self.metrics.epoch
             self.patience_counter = 0
-            logger.info(f"New best {self.early_stopping_metric}: {current_metric:.4f}")
+            logger.info(f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}")
 
             # Save best model
             if self.save_best_checkpoints:
                 self.checkpoint(name="best_val_checkpoint")
 
-            # save these metrics for target loss for training after stopping
-            self.best_val_accuracy = self.metrics.val_accuracy
-            self.best_val_loss = self.metrics.val_loss
-            self.best_val_epoch = self.metrics.epoch
         else:
             self.patience_counter += 1
             logger.info(
@@ -412,5 +396,16 @@ class Engine:
         self.log_metrics()
 
     def finish(self):
+        # put all metrics to json and save it
+
+        all_metrics = {k: v for k, v in self.metrics.__dict__.items() if v is not None}
+        all_metrics["best_val_accuracy"] = self.best_val_accuracy
+        all_metrics["best_val_loss"] = self.best_val_loss
+        all_metrics["best_val_epoch"] = self.best_val_epoch
+        all_metrics["early_stopping_counter"] = self.early_stopping_counter
+        
+        with open(self.checkpoint_path / "metrics.json", "w") as f:
+            json.dump(all_metrics, f)
+
         if self.use_wandb and self.wandb_run is not None:
             self.wandb_run.finish()
