@@ -12,8 +12,6 @@ import yaml
 import wandb
 
 
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -80,9 +78,9 @@ class Engine:
         self.best_val_accuracy = (
             0.0  # used for checkpointing, TODO: implement early stopping
         )
-    
+
     def setup_optimizations(self):
-        torch.backends.cunn.benchmark = True
+        torch.backends.cudnn.benchmark = True
 
         # Optional: Set memory format for better performance on modern GPUs
         # (Only if your model supports channels-last)
@@ -113,13 +111,12 @@ class Engine:
 
     def wandb_setup(self, config: Dict[str, Any]):
         logger.info(f"Setting up wandb with experiment name: {self.experiment_name}")
-        wb = wandb.init(
+        return wandb.init(
             entity="urban-sirca-vrije-universiteit-amsterdam",
             project="EEG-FM",
             name=self.experiment_name,
             config=config,
         )
-        return wb
 
     def log_metrics(self):
         """Send metrics to console (always) and wandb (if enabled)."""

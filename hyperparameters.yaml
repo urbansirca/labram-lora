@@ -8,11 +8,19 @@ experiment:
   meta: true
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
+  T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
+  T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
   device: "cuda"
   log_to_wandb: true
   n_subjects: 54
   save_checkpoints: true
   save_checkpoints_interval: 10
+
+optimizations:
+  non_blocking: true
+  pin_memory: true
+  persistent_workers: true
+  num_workers: 4 # if persistent_workers is true, then num_workers should be greater than 0
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
   electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
@@ -38,9 +46,6 @@ sampler:
   drop_last: false
   shuffle_subjects: true
   shuffle_trials: true
-  num_workers: 0
-  pin_memory: true
-  persistent_workers: true
 
 labram:
   lr: 0.001

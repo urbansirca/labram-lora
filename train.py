@@ -27,6 +27,13 @@ with open("hyperparameters.yaml", "r") as f:
 exp_cfg = config.get("experiment", {})
 data_cfg = config.get("data", {})
 samp_cfg = config.get("sampler", {})
+opt_cfg = config.get("optimizations", {})
+
+# optimizations
+NUM_WORKERS = opt_cfg.get("num_workers", 0)
+PIN_MEMORY = opt_cfg.get("pin_memory", False)
+PERSISTENT_WORKERS = opt_cfg.get("persistent_workers", False)
+NON_BLOCKING = opt_cfg.get("non_blocking", False)
 
 
 experiment_name = f"{exp_cfg['model']}_{datetime.now().strftime('%H%M%S')}"
@@ -118,9 +125,6 @@ EVAL_BS = samp_cfg.get("eval_batch_size", TRAIN_BS)
 DROP_LAST = samp_cfg.get("drop_last", False)
 SHUF_SUBJ = samp_cfg.get("shuffle_subjects", True)
 SHUF_TRIALS = samp_cfg.get("shuffle_trials", True)
-NUM_WORKERS = samp_cfg.get("num_workers", 0)
-PIN_MEMORY = samp_cfg.get("pin_memory", False)
-PERSISTENT_WORKERS = samp_cfg.get("persistent_workers", True)
 SAMP_TYPE = samp_cfg.get("type", "subject_pure").lower()
 
 
@@ -222,7 +226,9 @@ if SCHEDULER == "CosineAnnealingLR":
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
 elif SCHEDULER == "CosineAnnealingWarmRestarts":
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=N_EPOCHS // 2, T_mult=2
+        optimizer,
+        T_0=N_EPOCHS // exp_cfg.get("T_0", 2),
+        T_mult=exp_cfg.get("T_mult", 2),
     )
 elif SCHEDULER in (None, "None"):
     scheduler = None
@@ -247,7 +253,7 @@ experiment = Engine(
     electrodes=data_cfg.get("electrodes"),
     save_checkpoints=exp_cfg.get("save_checkpoints", True),
     save_checkpoints_interval=exp_cfg.get("save_checkpoints_interval", 10),
-    non_blocking=cfg.get("non_blocking", True),
+    non_blocking=NON_BLOCKING,
     pin_memory=PIN_MEMORY,
 )
 
