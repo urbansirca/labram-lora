@@ -39,7 +39,8 @@ sampler:
   shuffle_subjects: true
   shuffle_trials: true
   num_workers: 0
-  pin_memory: false
+  pin_memory: true
+  persistent_workers: true
 
 labram:
   lr: 0.001
