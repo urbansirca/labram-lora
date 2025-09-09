@@ -57,7 +57,14 @@ class Engine:
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
         self.device = torch.device(device) if isinstance(device, str) else device
-        self.model = torch.compile(model.to(self.device))  # compile the model
+
+        self.use_amp = use_amp  # use automatic mixed precision
+        if config["optimizations"]["use_compile"]:
+            self.model = torch.compile(model.to(self.device))  # compile the model
+        else:
+            self.model = model.to(self.device)
+        
+
 
         self.training_set = training_set
         self.validation_set = validation_set
@@ -113,7 +120,6 @@ class Engine:
             "train_after_stopping_epochs"
         ]
 
-        self.use_amp = use_amp  # use automatic mixed precision
 
     def setup_optimizations(self):
         torch.backends.cudnn.benchmark = True

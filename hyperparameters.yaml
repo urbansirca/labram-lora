@@ -6,7 +6,7 @@ experiment:
   dataset: "KU"
   meta: true
   optimizer: "AdamW"
-  scheduler: "None"
+  scheduler: "CosineAnnealingLR"
   T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
   T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
   device: "cuda"
@@ -28,11 +28,14 @@ experiment:
   train_after_stopping_epochs: 50
 
 optimizations:
-  non_blocking: true
-  pin_memory: true
+  non_blocking: false
+  pin_memory: false
   persistent_workers: false
   num_workers: 0 # if persistent_workers is true, then num_workers should be greater than 0
-  use_amp: true # use automatic mixed precision
+  use_amp: false # use automatic mixed precision
+  use_compile: false # use torch.compile
+
+
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
   electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
@@ -53,16 +56,15 @@ data:
 
 sampler:
   type: "mixed" 
-  train_batch_size: 500
-  eval_batch_size: 500
+  train_batch_size: 250
+  eval_batch_size: 250
   drop_last: false
   shuffle_subjects: true
   shuffle_trials: true
 
 labram:
-  lr: 0.005
-  weight_decay: 0.0005
-  batch_size: 32
+  lr: 0.001
+  weight_decay: 0.002
   seed: 42
   meta_lr: 0.001
   lora: true
@@ -71,19 +73,19 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
   lora_alpha: 32
   lora_dropout: 0.5
-  # target_modules: [
-  #   "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
-  #   "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",
-  #   "blocks.0.attn.proj", "blocks.1.attn.proj", "blocks.2.attn.proj", "blocks.3.attn.proj", "blocks.4.attn.proj", "blocks.5.attn.proj",
-  #   "blocks.6.attn.proj", "blocks.7.attn.proj", "blocks.8.attn.proj", "blocks.9.attn.proj", "blocks.10.attn.proj", "blocks.11.attn.proj",
-  #   "blocks.0.mlp.fc1", "blocks.1.mlp.fc1", "blocks.2.mlp.fc1", "blocks.3.mlp.fc1", "blocks.4.mlp.fc1", "blocks.5.mlp.fc1",
-  #   "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
-  # ]
-  target_modules: [   
-    "proj",
-    "qkv",
-    "fc1"
+  target_modules: [
+    "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
+    "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",
+    "blocks.0.attn.proj", "blocks.1.attn.proj", "blocks.2.attn.proj", "blocks.3.attn.proj", "blocks.4.attn.proj", "blocks.5.attn.proj",
+    "blocks.6.attn.proj", "blocks.7.attn.proj", "blocks.8.attn.proj", "blocks.9.attn.proj", "blocks.10.attn.proj", "blocks.11.attn.proj",
+    "blocks.0.mlp.fc1", "blocks.1.mlp.fc1", "blocks.2.mlp.fc1", "blocks.3.mlp.fc1", "blocks.4.mlp.fc1", "blocks.5.mlp.fc1",
+    "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
   ]
+  # target_modules: [   
+  #   "proj",
+  #   "qkv",
+  #   "fc1"
+  # ]
 
 eegnet:
   dropoutRate: 0.5
