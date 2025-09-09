@@ -2,12 +2,11 @@
 
 experiment:
   model: "labram"
-  epochs: 3
   seed: 111
   dataset: "KU"
   meta: true
   optimizer: "AdamW"
-  scheduler: "CosineAnnealingLR"
+  scheduler: "None"
   T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
   T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
   device: "cuda"
@@ -20,12 +19,13 @@ experiment:
   save_best_checkpoints: true
 
   early_stopping: true
-  early_stopping_patience: 10
+  early_stopping_patience: 5
   early_stopping_delta: 0.001
 
   # train after stopping
+  epochs: 50
   train_after_stopping: true # if true, will train the model after early stopping
-  train_after_stopping_epochs: 5
+  train_after_stopping_epochs: 50
 
 optimizations:
   non_blocking: true
@@ -60,8 +60,8 @@ sampler:
   shuffle_trials: true
 
 labram:
-  lr: 0.001
-  weight_decay: 0.001
+  lr: 0.005
+  weight_decay: 0.0005
   batch_size: 32
   seed: 42
   meta_lr: 0.001
@@ -71,13 +71,18 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
   lora_alpha: 32
   lora_dropout: 0.5
-  target_modules: [
-    "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
-    "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",
-    "blocks.0.attn.proj", "blocks.1.attn.proj", "blocks.2.attn.proj", "blocks.3.attn.proj", "blocks.4.attn.proj", "blocks.5.attn.proj",
-    "blocks.6.attn.proj", "blocks.7.attn.proj", "blocks.8.attn.proj", "blocks.9.attn.proj", "blocks.10.attn.proj", "blocks.11.attn.proj",
-    "blocks.0.mlp.fc1", "blocks.1.mlp.fc1", "blocks.2.mlp.fc1", "blocks.3.mlp.fc1", "blocks.4.mlp.fc1", "blocks.5.mlp.fc1",
-    "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
+  # target_modules: [
+  #   "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
+  #   "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",
+  #   "blocks.0.attn.proj", "blocks.1.attn.proj", "blocks.2.attn.proj", "blocks.3.attn.proj", "blocks.4.attn.proj", "blocks.5.attn.proj",
+  #   "blocks.6.attn.proj", "blocks.7.attn.proj", "blocks.8.attn.proj", "blocks.9.attn.proj", "blocks.10.attn.proj", "blocks.11.attn.proj",
+  #   "blocks.0.mlp.fc1", "blocks.1.mlp.fc1", "blocks.2.mlp.fc1", "blocks.3.mlp.fc1", "blocks.4.mlp.fc1", "blocks.5.mlp.fc1",
+  #   "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
+  # ]
+  target_modules: [   
+    "proj",
+    "qkv",
+    "fc1"
   ]
 
 eegnet:

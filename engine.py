@@ -11,6 +11,7 @@ import pathlib
 import yaml
 import wandb
 import numpy as np
+import json
 
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ class Engine:
         self.best_val_accuracy = 0.0
         self.best_val_loss = np.inf
         self.best_val_epoch = 0
-        self.early_stopping_counter = 0
+        self.patience_counter = 0
 
         self.early_stopping = config["experiment"]["early_stopping"]
         self.early_stopping_patience = config["experiment"]["early_stopping_patience"]
@@ -138,11 +139,25 @@ class Engine:
         return path
 
     def checkpoint(self, name: str = "checkpoint"):
-        """Save checkpoint of the model."""
-        torch.save(
-            self.model.state_dict(),
-            f"{self.checkpoint_path}/{name}",
-        )
+        """Save checkpoint of the PEFT model (LoRA adapters only)."""
+        checkpoint_path = f"{self.checkpoint_path}/{name}"
+        
+        # PEFT automatically saves only trainable adapter parameters
+        self.model.save_pretrained(checkpoint_path)
+        
+        # Optionally save training metadata
+        metadata = {
+            'epoch': getattr(self.metrics, 'epoch', None),
+            'train_loss': getattr(self.metrics, 'train_loss', None),
+            'val_loss': getattr(self.metrics, 'val_loss', None),
+            'train_accuracy': getattr(self.metrics, 'train_accuracy', None),
+            'val_accuracy': getattr(self.metrics, 'val_accuracy', None),
+            'scheduler_lr': getattr(self.metrics, 'scheduler_lr', None),
+            'timestamp': time.time()
+        }
+        
+        with open(f"{checkpoint_path}/training_metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
 
     def save_regular_checkpoint(self, joined: bool = False):
         if (
@@ -269,7 +284,7 @@ class Engine:
                 self.save_regular_checkpoint(joined=True)
 
             self.checkpoint(
-                name=f"FINAL_e{self.metrics.epoch}.pth"
+                name=f"FINAL_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
             )
 
     def check_early_stopping(self) -> bool:
@@ -284,10 +299,10 @@ class Engine:
             self.best_val_loss = self.metrics.val_loss
             self.best_val_epoch = self.metrics.epoch
             self.patience_counter = 0
-            logger.info(f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}")
+            logger.info(f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}, patience: {self.patience_counter}/{self.early_stopping_patience}")
 
             # Save best model
-            if self.save_best_checkpoints:
+            if self.save_best_checkpoints and self.metrics.epoch > self.save_regular_checkpoints_interval:
                 self.checkpoint(name="best_val_checkpoint")
 
         else:
@@ -298,9 +313,8 @@ class Engine:
 
         if self.patience_counter >= self.early_stopping_patience:
             logger.info(
-                f"Early stopping triggered! Best {self.early_stopping_metric}: {self.best_metric:.4f}"
+                f"Early stopping triggered! Best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}"
             )
-            self.early_stop = True
             return True
 
         return False
@@ -404,7 +418,7 @@ class Engine:
         all_metrics["best_val_epoch"] = self.best_val_epoch
         all_metrics["early_stopping_counter"] = self.early_stopping_counter
         
-        with open(self.checkpoint_path / "metrics.json", "w") as f:
+        with open(self.checkpoint_path / "final_metrics.json", "w") as f:
             json.dump(all_metrics, f)
 
         if self.use_wandb and self.wandb_run is not None:
