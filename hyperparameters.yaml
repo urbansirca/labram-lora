@@ -53,6 +53,10 @@ data:
   num_classes: 2 
   input_channels: 62
   num_samples: 1000
+  n_patches_labram: 4 # number of patches in the labram model
+  patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
+  trial_length: 800 # length of the trial in samples
+  fs: 200 # sampling frequency (downsampled from 1000 Hz)
 
 sampler:
   type: "mixed" 

@@ -63,8 +63,6 @@ class Engine:
             self.model = torch.compile(model.to(self.device))  # compile the model
         else:
             self.model = model.to(self.device)
-        
-
 
         self.training_set = training_set
         self.validation_set = validation_set
@@ -94,8 +92,8 @@ class Engine:
         self.save_final_checkpoint = config["experiment"]["save_final_checkpoint"]
         self.save_best_checkpoints = config["experiment"]["save_best_checkpoints"]
         self.save_regular_checkpoints_interval = config["experiment"][
-                "save_regular_checkpoints_interval"
-            ]
+            "save_regular_checkpoints_interval"
+        ]
         if any(
             [
                 self.save_regular_checkpoints,
@@ -104,7 +102,6 @@ class Engine:
             ]
         ):
             self.checkpoint_path = self.setup_checkpoint()
-            
 
         self.best_val_accuracy = 0.0
         self.best_val_loss = np.inf
@@ -120,6 +117,39 @@ class Engine:
             "train_after_stopping_epochs"
         ]
 
+        self.assert_dimensions()
+
+    # assert dimensions of the dataset are correct given model
+    def assert_dimensions(self):
+        """Asserts the dimensions of the dataloader"""
+
+        n_electrodes = self.config["data"]["input_channels"]
+        n_patches_labram = self.config["data"]["n_patches_labram"]
+        patch_length = self.config["data"]["patch_length"]
+        trial_length = self.config["data"]["trial_length"]
+
+        n_samples = next(iter(self.training_set))[0].shape[0]
+        if self.config["experiment"]["model"] == "labram":
+            assert next(iter(self.training_set))[0].shape == (
+                n_samples,
+                n_electrodes,
+                n_patches_labram,
+                patch_length,
+            ), "Input shape should be (n_samples, 62, 4, 200) and right now is " + str(
+                next(iter(self.training_set))[0].shape
+            )
+        elif self.config["experiment"]["model"] == "eegnet":
+            assert next(iter(self.training_set))[0].shape == (
+                n_samples,
+                n_electrodes,
+                trial_length,
+            ), "Input shape should be (n_samples, 62, 800) and right now is " + str(
+                next(iter(self.training_set))[0].shape
+            )
+        else:
+            raise NotImplementedError(
+                f"Model {self.config['experiment']['model']} not implemented yet"
+            )
 
     def setup_optimizations(self):
         torch.backends.cudnn.benchmark = True
@@ -147,22 +177,22 @@ class Engine:
     def checkpoint(self, name: str = "checkpoint"):
         """Save checkpoint of the PEFT model (LoRA adapters only)."""
         checkpoint_path = f"{self.checkpoint_path}/{name}"
-        
+
         # PEFT automatically saves only trainable adapter parameters
         self.model.save_pretrained(checkpoint_path)
-        
+
         # Optionally save training metadata
         metadata = {
-            'epoch': getattr(self.metrics, 'epoch', None),
-            'train_loss': getattr(self.metrics, 'train_loss', None),
-            'val_loss': getattr(self.metrics, 'val_loss', None),
-            'train_accuracy': getattr(self.metrics, 'train_accuracy', None),
-            'val_accuracy': getattr(self.metrics, 'val_accuracy', None),
-            'scheduler_lr': getattr(self.metrics, 'scheduler_lr', None),
-            'timestamp': time.time()
+            "epoch": getattr(self.metrics, "epoch", None),
+            "train_loss": getattr(self.metrics, "train_loss", None),
+            "val_loss": getattr(self.metrics, "val_loss", None),
+            "train_accuracy": getattr(self.metrics, "train_accuracy", None),
+            "val_accuracy": getattr(self.metrics, "val_accuracy", None),
+            "scheduler_lr": getattr(self.metrics, "scheduler_lr", None),
+            "timestamp": time.time(),
         }
-        
-        with open(f"{checkpoint_path}/training_metadata.json", 'w') as f:
+
+        with open(f"{checkpoint_path}/training_metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
 
     def save_regular_checkpoint(self, joined: bool = False):
@@ -271,44 +301,51 @@ class Engine:
         if self.save_final_checkpoint and not self.train_after_stopping:
             name = f"final_checkpoint_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
             self.checkpoint(name=name)
-        
+
         # ---------------- train after stopping ----------------
         if self.train_after_stopping:
-            logger.info(f"Training after stopping for {self.train_after_stopping_epochs} epochs")
-            self.metrics.val_accuracy = None # set to None to avoid confusion
-            self.metrics.val_loss = None # set to None to avoid confusion
+            logger.info(
+                f"Training after stopping for {self.train_after_stopping_epochs} epochs"
+            )
+            self.metrics.val_accuracy = None  # set to None to avoid confusion
+            self.metrics.val_loss = None  # set to None to avoid confusion
             for epoch in range(self.train_after_stopping_epochs):
                 self.metrics.epoch += 1
                 self.train_epoch(self.train_after_stopping_set)
                 self.log_metrics()
 
-                if self.metrics.train_loss <= self.best_val_loss: # use train_loss because val_loss is None
+                if (
+                    self.metrics.train_loss <= self.best_val_loss
+                ):  # use train_loss because val_loss is None
                     logger.info(
                         f"Training after stopping stopped at epoch {epoch} because target loss was reached"
                     )
                     break
                 self.save_regular_checkpoint(joined=True)
 
-            self.checkpoint(
-                name=f"FINAL_e{self.metrics.epoch}.pth"
-            )
+            self.checkpoint(name=f"FINAL_e{self.metrics.epoch}.pth")
 
     def check_early_stopping(self) -> bool:
         """Check if early stopping criteria is met. Returns True if should stop."""
-       
+
         is_better = self.metrics.val_loss < (
             self.best_val_loss - self.early_stopping_delta
         )
-       
+
         if is_better:
             self.best_val_accuracy = self.metrics.val_accuracy
             self.best_val_loss = self.metrics.val_loss
             self.best_val_epoch = self.metrics.epoch
             self.patience_counter = 0
-            logger.info(f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}, patience: {self.patience_counter}/{self.early_stopping_patience}")
+            logger.info(
+                f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}, patience: {self.patience_counter}/{self.early_stopping_patience}"
+            )
 
             # Save best model
-            if self.save_best_checkpoints and self.metrics.epoch > self.save_regular_checkpoints_interval:
+            if (
+                self.save_best_checkpoints
+                and self.metrics.epoch > self.save_regular_checkpoints_interval
+            ):
                 self.checkpoint(name="best_val_checkpoint")
 
         else:
@@ -423,7 +460,7 @@ class Engine:
         all_metrics["best_val_loss"] = self.best_val_loss
         all_metrics["best_val_epoch"] = self.best_val_epoch
         all_metrics["patience_counter"] = self.patience_counter
-        
+
         with open(self.checkpoint_path / "final_metrics.json", "w") as f:
             json.dump(all_metrics, f)
 
