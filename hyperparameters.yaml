@@ -32,7 +32,7 @@ optimizations:
   pin_memory: false
   persistent_workers: false
   num_workers: 0 # if persistent_workers is true, then num_workers should be greater than 0
-  use_amp: false # use automatic mixed precision
+  use_amp: false # use automatic mixed precision - TURNING ON PREVENTS CONVERGENCE
   use_compile: false # use torch.compile
 
 
@@ -63,7 +63,7 @@ sampler:
   shuffle_trials: true
 
 labram:
-  lr: 0.001
+  lr: 0.002
   weight_decay: 0.002
   seed: 42
   meta_lr: 0.001

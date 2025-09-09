@@ -217,7 +217,7 @@ class Engine:
             forward_start_time = time.time()
 
             if self.use_amp:  # use automatic mixed precision
-                with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                with torch.autocast(device_type=self.device.type):
                     if self.config["experiment"]["model"] == "labram":
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
@@ -290,7 +290,7 @@ class Engine:
                 self.save_regular_checkpoint(joined=True)
 
             self.checkpoint(
-                name=f"FINAL_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
+                name=f"FINAL_e{self.metrics.epoch}.pth"
             )
 
     def check_early_stopping(self) -> bool:
@@ -339,7 +339,7 @@ class Engine:
             forward_start_time = time.time()
 
             if self.use_amp:
-                with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                with torch.autocast(device_type=self.device.type):
                     if self.config["experiment"]["model"] == "labram":
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
@@ -422,7 +422,7 @@ class Engine:
         all_metrics["best_val_accuracy"] = self.best_val_accuracy
         all_metrics["best_val_loss"] = self.best_val_loss
         all_metrics["best_val_epoch"] = self.best_val_epoch
-        all_metrics["early_stopping_counter"] = self.early_stopping_counter
+        all_metrics["patience_counter"] = self.patience_counter
         
         with open(self.checkpoint_path / "final_metrics.json", "w") as f:
             json.dump(all_metrics, f)
