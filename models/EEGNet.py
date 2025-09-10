@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import json, pathlib, torch
+from dataclasses import asdict, dataclass
 
 class EEGNet(nn.Module):
     """
@@ -67,3 +69,9 @@ class EEGNet(nn.Module):
         x = self.separable(x)
         x = self.classifier(x)
         return x  # logits
+    
+    def save_pretrained(self, save_directory: str): #TODO: do this properly and also add load_weights ...
+        path = pathlib.Path(save_directory)
+        path.mkdir(parents=True, exist_ok=True)
+        # 2) weights.bin (or .pt)
+        torch.save(self.state_dict(), path / "pytorch_model.bin")

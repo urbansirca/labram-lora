@@ -46,6 +46,7 @@ if model_name == "labram":
         lora=hyperparameters["lora"],
         peft_config=config["peft_config"],
     )
+    flatten_patches = False
 
 elif model_name == "eegnet":
     hyperparameters = config.get("eegnet", {})
@@ -64,6 +65,7 @@ elif model_name == "eegnet":
             "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
         ),
     )
+    flatten_patches = True
 else:
     raise ValueError("Invalid model")
 
@@ -126,9 +128,9 @@ logger.info(f"Train subjects: {sm.S_train}")
 logger.info(f"Val subjects:   {sm.S_val}")
 logger.info(f"Test subjects:  {sm.S_test}")
 
-train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
-val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
-test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
+train_ds = KUTrialDataset(DATASET_PATH, sm.S_train, flatten_patches=flatten_patches)
+val_ds = KUTrialDataset(DATASET_PATH, sm.S_val, flatten_patches=flatten_patches)
+test_ds = KUTrialDataset(DATASET_PATH, sm.S_test, flatten_patches=flatten_patches)
 train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val)
 
 

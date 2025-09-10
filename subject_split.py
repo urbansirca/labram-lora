@@ -69,11 +69,13 @@ class KUTrialDataset(Dataset):
         self,
         dataset_path: str,
         subject_ids: List[int],
+        flatten_patches: bool = False,
         as_float32: bool = True,
         verbose: bool = False,  # Control debug output
     ):
         self.dataset_path = str(dataset_path)
         self.subject_ids = list(subject_ids)
+        self.flatten_patches = flatten_patches
         self.as_float32 = as_float32
         self._file = None
 
@@ -128,6 +130,11 @@ class KUTrialDataset(Dataset):
 
         X_np = grp["X"][t]  # (C, P, T)
         Y_np = grp["Y"][t]  # scalar
+
+        # self.flatten_patches = True for EEGNet
+        if getattr(self, "flatten_patches", False):
+            C, P, L = X_np.shape
+            X_np = X_np.reshape(C, P * L) # (C, T) with T = P*L
 
         X = (
             torch.from_numpy(X_np).float()
