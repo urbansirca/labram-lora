@@ -51,7 +51,7 @@ class Engine:
         pin_memory: bool = False,
         use_amp: bool = True,
     ):
-        self.model_str = self.config["experiment"]["model"]
+        self.model_str = config["experiment"]["model"]
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
