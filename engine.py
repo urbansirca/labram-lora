@@ -1,17 +1,15 @@
+import json
 import logging
-from typing import Any, Dict, Optional, Callable, List
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-import time
-import pathlib
-import yaml
+from torch.utils.data import DataLoader
 import wandb
-import numpy as np
-import json
 
 
 logger = logging.getLogger(__name__)
@@ -34,83 +32,137 @@ class Engine:
     def __init__(
         self,
         model: nn.Module,
-        config: Dict[str, Any],
-        hyperparameters: Dict[str, Any],
+        model_str: str,
         experiment_name: str,
-        n_epochs: int,
         device: str,
+        n_epochs: int,
+
+        # data loaders
         training_set: DataLoader,
         validation_set: DataLoader,
-        test_set: DataLoader,
-        train_after_stopping_set: DataLoader,
+        test_set: Optional[DataLoader],
+        train_after_stopping_set: Optional[DataLoader],
+
+        # optim / sched
         optimizer: Optimizer,
         scheduler: Optional[_LRScheduler],
-        use_wandb: bool = True,
+        loss_fn: Optional[nn.Module],
+
+        # data shape (explicit, used by assert_dimensions)
+        input_channels: int,
+        trial_length: int,
+        n_patches_labram: Optional[int] = None,
+        patch_length: Optional[int] = None,
+
+        # model extras
         electrodes: Optional[List[str]] = None,
+
+        # perf knobs
+        use_compile: bool = False,
         non_blocking: bool = True,
         pin_memory: bool = False,
         use_amp: bool = True,
+
+        # logging
+        use_wandb: bool = False,
+        wandb_entity: Optional[str] = None,
+        wandb_project: Optional[str] = None,
+
+        # checkpoints
+        save_regular_checkpoints: bool = False,
+        save_final_checkpoint: bool = True,
+        save_best_checkpoints: bool = True,
+        save_regular_checkpoints_interval: int = 10,
+        checkpoint_dir: Optional[Union[str, Path]] = None,
+
+        # early stopping
+        early_stopping: bool = True,
+        early_stopping_patience: int = 10,
+        early_stopping_delta: float = 0.0,
+
+        # train-after-stopping
+        train_after_stopping: bool = False,
+        train_after_stopping_epochs: int = 0,
+
+        # --- purely for logging/serialization (never read for logic) ---
+        config_for_logging: Optional[Dict[str, Any]] = None,
     ):
-        self.model_str = config["experiment"]["model"]
-        self.hyperparameters = hyperparameters
+        self.model_str = model_str
         self.experiment_name = experiment_name
-        self.n_epochs = n_epochs
+        self.n_epochs = int(n_epochs)
         self.device = torch.device(device) if isinstance(device, str) else device
 
-        self.use_amp = use_amp  # use automatic mixed precision
-        if config["optimizations"]["use_compile"]:
-            self.model = torch.compile(model.to(self.device))  # compile the model
-        else:
-            self.model = model.to(self.device)
+        # perf
+        self.non_blocking = non_blocking
+        self.pin_memory = pin_memory
+        self.use_amp = use_amp
 
+        # model
+        self.model = model.to(self.device)
+        if use_compile:
+            self.model = torch.compile(self.model)
+
+        # loaders
         self.training_set = training_set
         self.validation_set = validation_set
         self.test_set = test_set
         self.train_after_stopping_set = train_after_stopping_set
 
+        # opt/sched
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = loss_fn or nn.CrossEntropyLoss()
 
-        self.metrics = Metrics()
+        # shapes
+        self.input_channels = input_channels
+        self.trial_length = trial_length
+        self.n_patches_labram = n_patches_labram
+        self.patch_length = patch_length
+
+        # Labram 
         self.electrodes = electrodes
 
-        # optimizations
-        self.non_blocking = non_blocking
-        self.pin_memory = pin_memory
+        self.config_for_logging = config_for_logging
 
         # wandb
-        self.use_wandb = use_wandb and (wandb is not None)
+        self.use_wandb = bool(use_wandb) and (wandb is not None)
         self.wandb_run = None
-        self.config = config
-        self.start_time = time.time()
+        self.wandb_entity = wandb_entity
+        self.wandb_project = wandb_project
+        
         if self.use_wandb:
-            self.wandb_run = self.wandb_setup(config)
+            assert self.wandb_project, "wandb_project must be set when use_wandb=True"
+            self.wandb_run = self.wandb_setup()
 
-        self.save_regular_checkpoints = config["experiment"]["save_regular_checkpoints"]
-        self.save_final_checkpoint = config["experiment"]["save_final_checkpoint"]
-        self.save_best_checkpoints = config["experiment"]["save_best_checkpoints"]
-        self.save_regular_checkpoints_interval = config["experiment"]["save_regular_checkpoints_interval"]
-        if any(
-            [
-                self.save_regular_checkpoints,
-                self.save_final_checkpoint,
-                self.save_best_checkpoints,
-            ]
-        ):
-            self.checkpoint_path = self.setup_checkpoint()
 
+        # checkpoints
+        self.save_regular_checkpoints = save_regular_checkpoints
+        self.save_final_checkpoint = save_final_checkpoint
+        self.save_best_checkpoints = save_best_checkpoints
+        self.save_regular_checkpoints_interval = int(save_regular_checkpoints_interval)
+        self.checkpoint_root = Path(checkpoint_dir) if checkpoint_dir else (Path(__file__).parent / "weights" / "checkpoints" / self.experiment_name)
+        self.checkpoint_root.mkdir(parents=True, exist_ok=True)
+
+        # dump config for reproducibility
+        if self.config_for_logging is not None:
+            with open(self.checkpoint_root / "config.json", "w") as f:
+                json.dump(self.config_for_logging, f, indent=2)
+
+        # metrics/ES
+        self.metrics = Metrics()
         self.best_val_accuracy = 0.0
-        self.best_val_loss = np.inf
+        self.best_val_loss = float("inf")
         self.best_val_epoch = 0
         self.patience_counter = 0
+        self.early_stopping = early_stopping
+        self.early_stopping_patience = int(early_stopping_patience)
+        self.early_stopping_delta = float(early_stopping_delta)
 
-        self.early_stopping = config["experiment"]["early_stopping"]
-        self.early_stopping_patience = config["experiment"]["early_stopping_patience"]
-        self.early_stopping_delta = config["experiment"]["early_stopping_delta"]
+        # train-after-stopping
+        self.train_after_stopping = train_after_stopping
+        self.train_after_stopping_epochs = int(train_after_stopping_epochs)
 
-        self.train_after_stopping = config["experiment"]["train_after_stopping"]
-        self.train_after_stopping_epochs = config["experiment"]["train_after_stopping_epochs"]
+        self.start_time = time.time()
 
         self.assert_dimensions()
 
@@ -118,33 +170,17 @@ class Engine:
     def assert_dimensions(self):
         """Asserts the dimensions of the dataloader"""
 
-        n_electrodes = self.config["data"]["input_channels"]
-        n_patches_labram = self.config["data"]["n_patches_labram"]
-        patch_length = self.config["data"]["patch_length"]
-        trial_length = self.config["data"]["trial_length"]
+        Xshape = next(iter(self.training_set))[0].shape
 
-        n_samples = next(iter(self.training_set))[0].shape[0]
-        if self.model_str == "labram":
-            assert next(iter(self.training_set))[0].shape == (
-                n_samples,
-                n_electrodes,
-                n_patches_labram,
-                patch_length,
-            ), "Input shape should be (n_samples, 62, 4, 200) and right now is " + str(
-                next(iter(self.training_set))[0].shape
-            )
-        elif self.model_str == "eegnet":
-            assert next(iter(self.training_set))[0].shape == (
-                n_samples,
-                n_electrodes,
-                trial_length,
-            ), "Input shape should be (n_samples, 62, 800) and right now is " + str(
-                next(iter(self.training_set))[0].shape
-            )
-        else:
-            raise NotImplementedError(
-                f"Model {self.config['experiment']['model']} not implemented yet"
-            )
+        _, C, *rest = Xshape
+        if self.model_str == "eegnet":
+            assert (C, *rest) == (self.input_channels, self.trial_length), \
+                f"Per-sample shape should be {(self.input_channels, self.trial_length)} but is {(C, *rest)}"
+        elif self.model_str == "labram":
+            assert self.n_patches_labram is not None and self.patch_length is not None, \
+                "labram requires n_patches_labram and patch_length"
+            assert (C, *rest) == (self.input_channels, self.n_patches_labram, self.patch_length), \
+                f"Per-sample shape should be {(self.input_channels, self.n_patches_labram, self.patch_length)} but is {(C, *rest)}"
 
     def setup_optimizations(self):
         torch.backends.cudnn.benchmark = True
@@ -154,29 +190,18 @@ class Engine:
         # torch.backends.cudnn.allow_tf32 = True
         # torch.backends.cuda.matmul.allow_tf32 = True
 
-    def setup_checkpoint(self):
-        """Setup checkpoint of the model."""
-        path = (
-            pathlib.Path(__file__).parent
-            / "weights"
-            / "checkpoints"
-            / self.experiment_name
-        )
-        path.mkdir(parents=True, exist_ok=True)
-        # save the whle config
-        with open(path / "config.yaml", "w") as f:
-            yaml.dump(self.config, f)
-
-        return path
-
     def checkpoint(self, name: str = "checkpoint"):
-        """Save checkpoint of the PEFT model (LoRA adapters only)."""
-        checkpoint_path = f"{self.checkpoint_path}/{name}"
+        out_stem = str(self.checkpoint_root / name)
 
-        # PEFT automatically saves only trainable adapter parameters
-        self.model.save_pretrained(checkpoint_path)
+        # Save depending on model type
+        if hasattr(self.model, "save_pretrained"):  
+            # e.g. PEFT/LoRA/HF-style
+            self.model.save_pretrained(out_stem)
+        else:
+            # Plain PyTorch nn.Module
+            torch.save(self.model.state_dict(), f"{out_stem}.pt")
 
-        # Optionally save training metadata
+        # Save training metadata
         metadata = {
             "epoch": getattr(self.metrics, "epoch", None),
             "train_loss": getattr(self.metrics, "train_loss", None),
@@ -186,26 +211,22 @@ class Engine:
             "scheduler_lr": getattr(self.metrics, "scheduler_lr", None),
             "timestamp": time.time(),
         }
-
-        with open(f"{checkpoint_path}/training_metadata.json", "w") as f:
+        with open(f"{out_stem}_training_metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
 
     def save_regular_checkpoint(self, joined: bool = False):
-        if (
-            self.save_regular_checkpoints
-            and self.metrics.epoch % self.save_regular_checkpoints_interval == 0
-        ):
+        if self.save_regular_checkpoints and self.metrics.epoch % self.save_regular_checkpoints_interval == 0:
             joined_txt = "JOINED" if joined else ""
             name = f"checkpoint_{joined_txt}_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
             self.checkpoint(name=name)
 
-    def wandb_setup(self, config: Dict[str, Any]):
-        logger.info(f"Setting up wandb with experiment name: {self.experiment_name}")
+    def wandb_setup(self):
+        logger.info(f"Setting up wandb: {self.wandb_entity}/{self.wandb_project} :: {self.experiment_name}")
         return wandb.init(
-            entity="urban-sirca-vrije-universiteit-amsterdam",
-            project="EEG-FM",
+            entity=self.wandb_entity,
+            project=self.wandb_project,
             name=self.experiment_name,
-            config=config,
+            config=self.config_for_logging,
         )
 
     def log_metrics(self):
@@ -227,6 +248,17 @@ class Engine:
         if self.use_wandb and self.wandb_run is not None:
             self.wandb_run.log(present)
 
+    def _forward(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Unified forward pass with optional autocast and model_str dispatch.
+        """
+        if self.use_amp:
+            with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                return self.model(x=X, electrodes=self.electrodes) if self.model_str == "labram" else self.model(X)
+        else:
+            return self.model(x=X, electrodes=self.electrodes) if self.model_str == "labram" else self.model(X)
+
+
     def train_epoch(self, dataloader: DataLoader) -> None:
         self.model.train()
         total_loss = torch.tensor(0.0, device=self.device)
@@ -241,17 +273,7 @@ class Engine:
 
             forward_start_time = time.time()
 
-            if self.use_amp:  # use automatic mixed precision
-                with torch.autocast(device_type=self.device.type):
-                    if self.model_str == "labram":
-                        logits = self.model(x=X, electrodes=self.electrodes)
-                    else:
-                        logits = self.model(X)
-            else:
-                if self.model_str == "labram":
-                    logits = self.model(x=X, electrodes=self.electrodes)
-                else:
-                    logits = self.model(X)
+            logits = self._forward(X)
 
             backward_start_time = time.time()
             loss = self.loss_fn(logits, Y)
@@ -370,17 +392,7 @@ class Engine:
 
             forward_start_time = time.time()
 
-            if self.use_amp:
-                with torch.autocast(device_type=self.device.type):
-                    if self.model_str == "labram":
-                        logits = self.model(x=X, electrodes=self.electrodes)
-                    else:
-                        logits = self.model(X)
-            else:
-                if self.model_str == "labram":
-                    logits = self.model(x=X, electrodes=self.electrodes)
-                else:
-                    logits = self.model(X)
+            logits = self._forward(X)
 
             backward_start_time = time.time()
             loss = self.loss_fn(logits, Y)
@@ -415,17 +427,7 @@ class Engine:
 
             forward_start_time = time.time()
 
-            if self.use_amp:
-                with torch.autocast(device_type=self.device.type, dtype=torch.float16):
-                    if self.model_str == "labram":
-                        logits = self.model(x=X, electrodes=self.electrodes)
-                    else:
-                        logits = self.model(X)
-            else:
-                if self.model_str == "labram":
-                    logits = self.model(x=X, electrodes=self.electrodes)
-                else:
-                    logits = self.model(X)
+            logits = self._forward(X)
 
             backward_start_time = time.time()
             loss = self.loss_fn(logits, Y)
@@ -456,7 +458,7 @@ class Engine:
         all_metrics["best_val_epoch"] = self.best_val_epoch
         all_metrics["patience_counter"] = self.patience_counter
 
-        with open(self.checkpoint_path / "final_metrics.json", "w") as f:
+        with open(self.checkpoint_root / "final_metrics.json", "w") as f:
             json.dump(all_metrics, f)
 
         if self.use_wandb and self.wandb_run is not None:
