@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable
 
 import torch
 import torch.nn as nn
@@ -44,9 +44,13 @@ class Engine:
         train_after_stopping_set: Optional[DataLoader],
 
         # optim / sched
-        optimizer: Optimizer,
-        scheduler: Optional[_LRScheduler],
+        # optimizer: Optimizer,
+        # scheduler: Optional[_LRScheduler],
         loss_fn: Optional[nn.Module],
+
+        # factories for optim / sched
+        optimizer_factory: Callable[[nn.Module], Optimizer],
+        scheduler_factory: Callable[[Optimizer], Optional[_LRScheduler]],
 
         # data shape (explicit, used by assert_dimensions)
         input_channels: int,
@@ -109,8 +113,10 @@ class Engine:
         self.train_after_stopping_set = train_after_stopping_set
 
         # opt/sched
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.optimizer_factory = optimizer_factory
+        self.scheduler_factory = scheduler_factory
+        self.optimizer = self.optimizer_factory(self.model)
+        self.scheduler = self.scheduler_factory(self.optimizer)
         self.loss_fn = loss_fn or nn.CrossEntropyLoss()
 
         # shapes
@@ -217,7 +223,9 @@ class Engine:
     def save_regular_checkpoint(self, joined: bool = False):
         if self.save_regular_checkpoints and self.metrics.epoch % self.save_regular_checkpoints_interval == 0:
             joined_txt = "JOINED" if joined else ""
-            name = f"checkpoint_{joined_txt}_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
+            metric_val = self.metrics.val_accuracy if not joined else self.metrics.train_loss
+            metric_str = f"{metric_val:.3f}" if metric_val is not None else "NA"
+            name = f"checkpoint_{joined_txt}_e{self.metrics.epoch}_{'acc' if not joined else 'loss'}{metric_str}"
             self.checkpoint(name=name)
 
     def wandb_setup(self):
@@ -253,7 +261,7 @@ class Engine:
         Unified forward pass with optional autocast and model_str dispatch.
         """
         if self.use_amp:
-            with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+            with torch.autocast(device_type=self.device.type):
                 return self.model(x=X, electrodes=self.electrodes) if self.model_str == "labram" else self.model(X)
         else:
             return self.model(x=X, electrodes=self.electrodes) if self.model_str == "labram" else self.model(X)
@@ -315,17 +323,20 @@ class Engine:
             self.save_regular_checkpoint(joined=False)
 
         # ---------------- save the final checkpoint ----------------
-        if self.save_final_checkpoint and not self.train_after_stopping:
-            name = f"final_checkpoint_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}.pth"
+        if self.save_final_checkpoint:
+            name = f"final_checkpoint_e{self.metrics.epoch}_acc{self.metrics.val_accuracy:.3f}"
             self.checkpoint(name=name)
 
         # ---------------- train after stopping ----------------
         if self.train_after_stopping:
+            self.optimizer = self.optimizer_factory(self.model)
+            self.scheduler = self.scheduler_factory(self.optimizer)
             logger.info(
                 f"Training after stopping for {self.train_after_stopping_epochs} epochs"
             )
             self.metrics.val_accuracy = None  # set to None to avoid confusion
             self.metrics.val_loss = None  # set to None to avoid confusion
+            self.patience_counter = 0
             for epoch in range(self.train_after_stopping_epochs):
                 self.metrics.epoch += 1
                 self.train_epoch(self.train_after_stopping_set)
@@ -340,7 +351,7 @@ class Engine:
                     break
                 self.save_regular_checkpoint(joined=True)
 
-            self.checkpoint(name=f"FINAL_e{self.metrics.epoch}.pth")
+            self.checkpoint(name=f"FINAL_e{self.metrics.epoch}")
 
     def check_early_stopping(self) -> bool:
         """Check if early stopping criteria is met. Returns True if should stop."""
@@ -359,10 +370,7 @@ class Engine:
             )
 
             # Save best model
-            if (
-                self.save_best_checkpoints
-                and self.metrics.epoch > self.save_regular_checkpoints_interval
-            ):
+            if self.save_best_checkpoints:
                 self.checkpoint(name="best_val_checkpoint")
 
         else:

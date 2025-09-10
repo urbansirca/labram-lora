@@ -4,7 +4,7 @@ experiment:
   model: "labram"
   seed: 111
   dataset: "KU"
-  meta: true
+  meta: false
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
   T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
@@ -23,9 +23,9 @@ experiment:
   early_stopping_delta: 0.001
 
   # train after stopping
-  epochs: 50
+  epochs: 3
   train_after_stopping: true # if true, will train the model after early stopping
-  train_after_stopping_epochs: 50
+  train_after_stopping_epochs: 3
 
 optimizations:
   non_blocking: false
@@ -59,7 +59,6 @@ data:
   fs: 200 # sampling frequency (downsampled from 1000 Hz)
 
 sampler:
-  type: "mixed" 
   train_batch_size: 250
   eval_batch_size: 250
   drop_last: false
@@ -91,7 +90,9 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   #   "fc1"
   # ]
 
-eegnet:
+eegnet: #TODO: properly handle lr and weight_decay when eegnet
+  lr: 0.001
+  weight_decay: 0.002
   dropoutRate: 0.5
   kernLength: 64
   F1: 8

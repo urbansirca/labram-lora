@@ -209,6 +209,32 @@ elif SCHEDULER in (None, "None"):
 else:
     raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
 
+# ---------------- factories ------------
+def make_optimizer(model: torch.nn.Module):
+    lr = float(hyperparameters.get("lr", 1e-3))
+    wd = float(hyperparameters.get("weight_decay", 0.0))
+
+    if OPTIMIZER.lower() == "adamw":
+        return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
+    elif OPTIMIZER.lower() == "adam":
+        return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+    else:
+        raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+
+
+def make_scheduler(optimizer: torch.optim.Optimizer):
+    if SCHEDULER == "CosineAnnealingLR":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
+    elif SCHEDULER == "CosineAnnealingWarmRestarts":
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=N_EPOCHS // exp_cfg.get("T_0", 2),
+            T_mult=exp_cfg.get("T_mult", 2),
+        )
+    elif SCHEDULER in (None, "None"):
+        return None
+    else:
+        raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
 
 # ---------------- engine -----------------
 model_str = exp_cfg["model"].lower()
@@ -232,8 +258,8 @@ experiment = Engine(
     train_after_stopping_set=train_after_stopping_loader,
 
     # optimization
-    optimizer=optimizer,
-    scheduler=scheduler,
+    optimizer_factory=make_optimizer,
+    scheduler_factory=make_scheduler,
     loss_fn=None,  # default CE inside Engine
 
     # shapes
