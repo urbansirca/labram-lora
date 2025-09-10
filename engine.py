@@ -51,6 +51,7 @@ class Engine:
         pin_memory: bool = False,
         use_amp: bool = True,
     ):
+        self.model_str = self.config["experiment"]["model"]
         self.hyperparameters = hyperparameters
         self.experiment_name = experiment_name
         self.n_epochs = n_epochs
@@ -123,7 +124,7 @@ class Engine:
         trial_length = self.config["data"]["trial_length"]
 
         n_samples = next(iter(self.training_set))[0].shape[0]
-        if self.config["experiment"]["model"] == "labram":
+        if self.model_str == "labram":
             assert next(iter(self.training_set))[0].shape == (
                 n_samples,
                 n_electrodes,
@@ -132,7 +133,7 @@ class Engine:
             ), "Input shape should be (n_samples, 62, 4, 200) and right now is " + str(
                 next(iter(self.training_set))[0].shape
             )
-        elif self.config["experiment"]["model"] == "eegnet":
+        elif self.model_str == "eegnet":
             assert next(iter(self.training_set))[0].shape == (
                 n_samples,
                 n_electrodes,
@@ -242,12 +243,12 @@ class Engine:
 
             if self.use_amp:  # use automatic mixed precision
                 with torch.autocast(device_type=self.device.type):
-                    if self.config["experiment"]["model"] == "labram":
+                    if self.model_str == "labram":
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
                         logits = self.model(X)
             else:
-                if self.config["experiment"]["model"] == "labram":
+                if self.model_str == "labram":
                     logits = self.model(x=X, electrodes=self.electrodes)
                 else:
                     logits = self.model(X)
@@ -371,12 +372,12 @@ class Engine:
 
             if self.use_amp:
                 with torch.autocast(device_type=self.device.type):
-                    if self.config["experiment"]["model"] == "labram":
+                    if self.model_str == "labram":
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
                         logits = self.model(X)
             else:
-                if self.config["experiment"]["model"] == "labram":
+                if self.model_str == "labram":
                     logits = self.model(x=X, electrodes=self.electrodes)
                 else:
                     logits = self.model(X)
@@ -416,12 +417,12 @@ class Engine:
 
             if self.use_amp:
                 with torch.autocast(device_type=self.device.type, dtype=torch.float16):
-                    if self.config["experiment"]["model"] == "labram":
+                    if self.model_str == "labram":
                         logits = self.model(x=X, electrodes=self.electrodes)
                     else:
                         logits = self.model(X)
             else:
-                if self.config["experiment"]["model"] == "labram":
+                if self.model_str == "labram":
                     logits = self.model(x=X, electrodes=self.electrodes)
                 else:
                     logits = self.model(X)
