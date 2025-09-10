@@ -47,8 +47,6 @@ class Engine:
         scheduler: Optional[_LRScheduler],
         use_wandb: bool = True,
         electrodes: Optional[List[str]] = None,
-        save_checkpoints: bool = True,
-        save_checkpoints_interval: int = 10,
         non_blocking: bool = True,
         pin_memory: bool = False,
         use_amp: bool = True,
@@ -91,9 +89,7 @@ class Engine:
         self.save_regular_checkpoints = config["experiment"]["save_regular_checkpoints"]
         self.save_final_checkpoint = config["experiment"]["save_final_checkpoint"]
         self.save_best_checkpoints = config["experiment"]["save_best_checkpoints"]
-        self.save_regular_checkpoints_interval = config["experiment"][
-            "save_regular_checkpoints_interval"
-        ]
+        self.save_regular_checkpoints_interval = config["experiment"]["save_regular_checkpoints_interval"]
         if any(
             [
                 self.save_regular_checkpoints,
@@ -113,9 +109,7 @@ class Engine:
         self.early_stopping_delta = config["experiment"]["early_stopping_delta"]
 
         self.train_after_stopping = config["experiment"]["train_after_stopping"]
-        self.train_after_stopping_epochs = config["experiment"][
-            "train_after_stopping_epochs"
-        ]
+        self.train_after_stopping_epochs = config["experiment"]["train_after_stopping_epochs"]
 
         self.assert_dimensions()
 
