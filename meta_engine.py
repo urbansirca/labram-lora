@@ -175,7 +175,6 @@ class MetaEngine:
         self._t0 = time.time()
         self._printed_header = False
         self.rng = random.Random(int(seed))
-        # self.rng.manual_seed(int(seed))
 
     def _grad_norm(self, params) -> float:
         sqsum = 0.0
@@ -184,10 +183,6 @@ class MetaEngine:
                 sqsum += float(p.grad.detach().pow(2).sum().item())
         return sqsum ** 0.5
 
-    def _named_params(self):
-        # returns OrderedDict name->param for functional_call
-        return dict(self.model.named_parameters())
-    
     def _clone_as_leaf(self, params):
         return [p.detach().clone().requires_grad_(True) for p in params]
 
@@ -200,10 +195,12 @@ class MetaEngine:
                 out.append((p - lr * g).detach().requires_grad_(True))
         return out
 
-
     def _forward_with(self, params_dict, x):
-        # Stateless forward with provided param dict
-        return functional_call(self.model, params_dict, (x,))
+        if self.use_amp:
+            with torch.autocast(device_type=self.device.type):
+                return functional_call(self.model, params_dict, (x,))
+        else:
+            return functional_call(self.model, params_dict, (x,))
     
     def _forward(self, X):
         """Single forward that respects model kind and AMP."""
@@ -284,7 +281,8 @@ class MetaEngine:
                 fast_dict = {n: p for n, p in zip(base_names, fast)}
                 logits_s = self._forward_with(fast_dict, Xs)
                 Ls = nn.functional.cross_entropy(logits_s, ys)
-                inner_loss_accum += float(Ls.detach().cpu()); inner_loss_count += 1
+                inner_loss_accum += float(Ls.detach().cpu())
+                inner_loss_count += 1
                 grads = torch.autograd.grad(Ls, fast, create_graph=False, retain_graph=False, allow_unused=True)
                 fast = self._sgd_update_detached(fast, grads, self.inner_lr)
 
@@ -306,8 +304,6 @@ class MetaEngine:
             outer_count += yq.numel()
 
         self.optimizer.step()
-        if self.scheduler is not None:
-            self.scheduler.step()
 
         self.metrics.query_loss = outer_loss_sum / max(1, len(subjects_batch))
         self.metrics.support_loss = (inner_loss_accum / inner_loss_count) if inner_loss_count else None
@@ -371,7 +367,8 @@ class MetaEngine:
                 self.meta_validate_epoch()
                 self.log_metrics()
 
-
+            if self.scheduler is not None:
+                self.scheduler.step()
 
 import logging, torch
 from pathlib import Path
@@ -443,7 +440,7 @@ if __name__ == "__main__":
     INNER_LR      = 2e-3
     STEPS_PER_EPO = 8
     RUN_SIZE      = 100         # episode indexing granularity
-    EPOCHS        = 4
+    EPOCHS        = 10
 
     # --------- init MetaEngine with explicit args only ---------
     engine = MetaEngine(
