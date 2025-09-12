@@ -61,14 +61,22 @@ class EEGNet(nn.Module):
             nn.LazyLinear(nb_classes, bias=True),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, C, T) -> (B, 1, C, T)
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        # Accept (B, C, T) or (B, C, P, T). If 4-D, flatten patches.
+        if x.ndim == 4:
+            # (B, C, P, T) -> (B, C, P*T)
+            B, C, P, T = x.shape
+            x = x.reshape(B, C, P * T)
+        elif x.ndim != 3:
+            raise ValueError(f"EEGNet expects (B,C,T) or (B,C,P,T), got shape {tuple(x.shape)}")
+
+        # (B, C, T) -> (B, 1, C, T)
         x = x.unsqueeze(1)
         x = self.firstconv(x)
         x = self.depthwise(x)
         x = self.separable(x)
         x = self.classifier(x)
-        return x  # logits
+        return x 
     
     def save_pretrained(self, save_directory: str): #TODO: do this properly and also add load_weights ...
         path = pathlib.Path(save_directory)
