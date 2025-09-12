@@ -176,15 +176,20 @@ class MetaEngine:
         self._printed_header = False
         self.rng = random.Random(int(seed))
 
-    def _grad_norm(self, params) -> float:
-        sqsum = 0.0
-        for p in params:
-            if p.grad is not None:
-                sqsum += float(p.grad.detach().pow(2).sum().item())
-        return sqsum ** 0.5
 
+        self.base_param_shapes = [p.shape for p in self.model.parameters()]
+
+
+    def _grad_norm(self, params) -> float:
+        grad_tensors = [p.grad.detach() for p in params if p.grad is not None]
+        if not grad_tensors:
+            return 0.0
+        return torch.norm(torch.stack([torch.norm(g) for g in grad_tensors])).item()
+
+    # def _clone_as_leaf(self, params):
+    #     return [p.detach().clone().requires_grad_(True) for p in params]
     def _clone_as_leaf(self, params):
-        return [p.detach().clone().requires_grad_(True) for p in params]
+        return [torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in params]
 
     def _sgd_update_detached(self, fast, grads, lr):
         out = []
@@ -265,10 +270,15 @@ class MetaEngine:
 
         self.optimizer.zero_grad(set_to_none=True)
 
-        outer_loss_sum = 0.0
-        outer_correct = 0
-        outer_count = 0
-        inner_loss_accum, inner_loss_count = 0.0, 0
+        # outer_loss_sum = 0.0
+        outer_losses = []
+        # outer_correct = 0
+        # outer_count = 0
+        # inner_loss_accum, inner_loss_count = 0.0, 0
+        inner_losses = []
+
+        correct_preds = []
+        total_samples = []
 
         for sid in subjects_batch:
             sup_idx, rq = sample_support(sid, self.train_epi, self.K, self.rng)
@@ -277,16 +287,22 @@ class MetaEngine:
             Xq, yq = fetch_by_indices(self.train_ds, self.train_epi, sid, que_idx, self.device)
 
             fast = self._clone_as_leaf(base_params)
+            fast_dict = dict(zip(base_names, fast))
             for _ in range(self.inner_steps):
-                fast_dict = {n: p for n, p in zip(base_names, fast)}
+                # fast_dict = {n: p for n, p in zip(base_names, fast)}
+                for name, param in zip(base_names, fast):
+                    fast_dict[name] = param
                 logits_s = self._forward_with(fast_dict, Xs)
                 Ls = nn.functional.cross_entropy(logits_s, ys)
-                inner_loss_accum += float(Ls.detach().cpu())
-                inner_loss_count += 1
+                # inner_loss_accum += Ls.detach()
+                inner_losses.append(Ls.detach())
+                # inner_loss_count += 1
                 grads = torch.autograd.grad(Ls, fast, create_graph=False, retain_graph=False, allow_unused=True)
                 fast = self._sgd_update_detached(fast, grads, self.inner_lr)
 
-            fast_dict = {n: p for n, p in zip(base_names, fast)}
+            # fast_dict = {n: p for n, p in zip(base_names, fast)}
+            for name, param in zip(base_names, fast):
+                fast_dict[name] = param
             logits_q = self._forward_with(fast_dict, Xq)
             Lq = nn.functional.cross_entropy(logits_q, yq)
 
@@ -299,14 +315,20 @@ class MetaEngine:
                 if bp.grad is None: bp.grad = g.clone()
                 else: bp.grad.add_(g)
 
-            outer_loss_sum += float(Lq.detach().cpu())
-            outer_correct += (logits_q.argmax(1) == yq).sum().item()
-            outer_count += yq.numel()
+            # outer_loss_sum += float(Lq.detach().cpu())
+            outer_losses.append(Lq.detach())
+            # outer_correct += (logits_q.argmax(1) == yq).sum().item()
+            # outer_count += yq.numel()
+            correct_preds.append((logits_q.argmax(1) == yq).sum())
+            total_samples.append(torch.tensor(yq.numel(), device=self.device))
 
         self.optimizer.step()
 
-        self.metrics.query_loss = outer_loss_sum / max(1, len(subjects_batch))
-        self.metrics.support_loss = (inner_loss_accum / inner_loss_count) if inner_loss_count else None
+        
+        outer_correct = torch.stack(correct_preds).sum().item()
+        outer_count = torch.stack(total_samples).sum().item()
+        self.metrics.support_loss = torch.stack(inner_losses).mean().cpu().item() if inner_losses else None
+        self.metrics.query_loss = torch.stack(outer_losses).mean().cpu().item() if outer_losses else None
         self.metrics.train_accuracy = outer_correct / max(1, outer_count)
         self.metrics.scheduler_lr = float(self.optimizer.param_groups[0]["lr"])
         self.metrics.grad_norm = self._grad_norm(base_params)
@@ -316,8 +338,10 @@ class MetaEngine:
         self.model.eval()
         rng = self.rng
 
-        total_loss = 0.0
-        total_correct = 0
+        # total_loss = 0.0
+        total_losses = []
+        # total_correct = 0
+        total_corrects = []
         total_count = 0
 
         # we never mutate base params; we only read them to create 'fast'
@@ -334,8 +358,11 @@ class MetaEngine:
 
             # ----- inner adaptation on cloned leafs (requires grad) -----
             fast = self._clone_as_leaf(base_params)  # leaves w/ requires_grad=True
+            fast_dict = dict(zip(base_names, fast))
             for _ in range(self.inner_steps):
-                fast_dict = {name: p for name, p in zip(base_names, fast)}
+                # fast_dict = {name: p for name, p in zip(base_names, fast)}
+                for name, param in zip(base_names, fast):
+                    fast_dict[name] = param
                 # enable grad just for inner step
                 with torch.enable_grad():
                     logits_s = self._forward_with(fast_dict, Xs)
@@ -344,15 +371,22 @@ class MetaEngine:
                 fast = self._sgd_update_detached(fast, grads, self.inner_lr)
 
             # ----- query evaluation with adapted params (no grad needed) -----
-            fast_dict = {name: p for name, p in zip(base_names, fast)}
+            # fast_dict = {name: p for name, p in zip(base_names, fast)}
+            for name, param in zip(base_names, fast):
+                fast_dict[name] = param
             with torch.no_grad():
                 logits_q = self._forward_with(fast_dict, Xq)
                 Lq = torch.nn.functional.cross_entropy(logits_q, yq)
-                total_loss += float(Lq)
-                total_correct += (logits_q.argmax(1) == yq).sum().item()
+                # total_loss += float(Lq)
+                total_losses.append(Lq)
+                # total_correct += (logits_q.argmax(1) == yq).sum().item()
+                total_corrects.append((logits_q.argmax(1) == yq).sum())
                 total_count += yq.numel()
 
-        self.metrics.val_loss = total_loss / max(1, len(self.S_val))
+        total_correct = torch.stack(total_corrects).sum().item()
+        total_count = torch.tensor(total_count, device=self.device)
+
+        self.metrics.val_loss = torch.stack(total_losses).mean().cpu().item()
         self.metrics.val_accuracy = total_correct / max(1, total_count)
 
     def train(self):
