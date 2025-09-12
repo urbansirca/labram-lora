@@ -1,7 +1,7 @@
 experiment:
   model: labram         # or "eegnet"
   device: cuda          # "cuda" | "cpu" | "mps"
-  n_subjects: 10       # used if data.subjects not set
+  n_subjects: 54       # used if data.subjects not set
   seed: 111
   epochs: 60
   optimizer: AdamW       # Adam | AdamW
@@ -11,9 +11,9 @@ experiment:
   wandb_entity: "urban-sirca-vrije-universiteit-amsterdam"
   wandb_project: "EEG-FM"
   save_regular_checkpoints: false
-  save_final_checkpoint: false
-  save_best_checkpoints: false
-  save_regular_checkpoints_interval: 10
+  save_final_checkpoint: true
+  save_best_checkpoints: tre
+  save_regular_checkpoints_interval: 20
   early_stopping: true
   early_stopping_patience: 10
   early_stopping_delta: 0.0
@@ -24,8 +24,8 @@ experiment:
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed.h5
   # subjects: [1,2,3,4,5,6,7,8,9,10]   # optional; else n_subjects used
-  leave_out: [8,9]                # test set subjects
-  m_leave_out:                     # optional multi-LOO size
+  # leave_out: [8,9,10]                # test set subjects
+  m_leave_out: 5                  # optional multi-LOO size
   train_proportion: 0.9
   input_channels: 62
   num_classes: 2
@@ -38,10 +38,10 @@ data:
 meta:
   meta_batch_size: 4
   k_support: 5
-  q_query: 10         # or null for “all remaining”
+  q_query: 100         # or null for “all remaining”
   inner_steps: 3
   inner_lr: 0.002
-  steps_per_epoch: 2
+  steps_per_epoch: 4
   run_size: 100       # granularity for episode indexing
 
 optimizations:
