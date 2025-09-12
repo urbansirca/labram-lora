@@ -476,135 +476,135 @@ class MetaEngine:
                 self.scheduler.step()
 
 
-import logging, torch
-from pathlib import Path
-from subject_split import KUTrialDataset, SplitConfig, SplitManager
-from models import EEGNet
+# import logging, torch
+# from pathlib import Path
+# from subject_split import KUTrialDataset, SplitConfig, SplitManager
+# from models import EEGNet
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
+#     logging.basicConfig(level=logging.INFO)
+#     logger = logging.getLogger(__name__)
 
-    # --------- minimal model setup (match dataset shape) ---------
-    chans = 62
-    n_patches_labram = 4
-    samples = 200  # (4 patches * 200) flattened to T
-    classes = 2
+#     # --------- minimal model setup (match dataset shape) ---------
+#     chans = 62
+#     n_patches_labram = 4
+#     samples = 200  # (4 patches * 200) flattened to T
+#     classes = 2
 
-    # model = EEGNet(
-    #     nb_classes=classes,
-    #     Chans=chans,
-    #     Samples=samples,
-    #     dropoutRate=0.5,
-    #     kernLength=64,
-    #     F1=8,
-    #     D=2,
-    #     F2=16
-    # )
+#     # model = EEGNet(
+#     #     nb_classes=classes,
+#     #     Chans=chans,
+#     #     Samples=samples,
+#     #     dropoutRate=0.5,
+#     #     kernLength=64,
+#     #     F1=8,
+#     #     D=2,
+#     #     F2=16
+#     # )
 
-    peft_config = {
-        "r": 1,
-        "lora_alpha": 32,
-        "lora_dropout": 0.5,
-        "target_modules": ["qkv", "fc1", "proj"],
-    }
-    model_str = "labram"
-    model = load_labram(
-        lora=True,
-        peft_config=peft_config,
-    )
+#     peft_config = {
+#         "r": 1,
+#         "lora_alpha": 32,
+#         "lora_dropout": 0.5,
+#         "target_modules": ["qkv", "fc1", "proj"],
+#     }
+#     model_str = "labram"
+#     model = load_labram(
+#         lora=True,
+#         peft_config=peft_config,
+#     )
 
-    # --------- data / splits (explicit; no dicts) ---------
-    SUBJECT_IDS = list(range(1, 10))
-    LEAVE_OUT = [8, 9]  # test subjects for quick sanity check
-    TRAIN_PROP = 0.9
-    SEED = 111
-    DATASET_PATH = "data/preprocessed/KU_mi_labram_preprocessed.h5"
+#     # --------- data / splits (explicit; no dicts) ---------
+#     SUBJECT_IDS = list(range(1, 10))
+#     LEAVE_OUT = [8, 9]  # test subjects for quick sanity check
+#     TRAIN_PROP = 0.9
+#     SEED = 111
+#     DATASET_PATH = "data/preprocessed/KU_mi_labram_preprocessed.h5"
 
-    split_cfg = SplitConfig(
-        subject_ids=SUBJECT_IDS,
-        m_leave_out=None,
-        subject_ids_leave_out=LEAVE_OUT,
-        train_proportion=TRAIN_PROP,
-        seed=SEED,
-    )
-    sm = SplitManager(split_cfg)
-    logger.info(f"Train subjects: {sm.S_train}")
-    logger.info(f"Val subjects:   {sm.S_val}")
-    logger.info(f"Test subjects:  {sm.S_test}")
+#     split_cfg = SplitConfig(
+#         subject_ids=SUBJECT_IDS,
+#         m_leave_out=None,
+#         subject_ids_leave_out=LEAVE_OUT,
+#         train_proportion=TRAIN_PROP,
+#         seed=SEED,
+#     )
+#     sm = SplitManager(split_cfg)
+#     logger.info(f"Train subjects: {sm.S_train}")
+#     logger.info(f"Val subjects:   {sm.S_val}")
+#     logger.info(f"Test subjects:  {sm.S_test}")
 
-    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
-    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
-    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
+#     train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
+#     val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
+#     test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
 
-    # --------- device + quick warmup (defensive for Lazy layers) ---------
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
-    electrodes = get_ku_dataset_channels()
-    with torch.no_grad():
-        _ = model(
-            x=torch.zeros(1, chans, n_patches_labram, samples, device=device),
-            electrodes=electrodes,
-        )
+#     # --------- device + quick warmup (defensive for Lazy layers) ---------
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+#     model = model.to(device)
+#     electrodes = get_ku_dataset_channels()
+#     with torch.no_grad():
+#         _ = model(
+#             x=torch.zeros(1, chans, n_patches_labram, samples, device=device),
+#             electrodes=electrodes,
+#         )
 
-    # --------- optimizer / scheduler factories (explicit) ---------
-    opt_factory = lambda m: torch.optim.Adam(m.parameters(), lr=1e-3, weight_decay=0.0)
-    sch_factory = lambda opt: torch.optim.lr_scheduler.StepLR(
-        opt, step_size=50, gamma=0.5
-    )
+#     # --------- optimizer / scheduler factories (explicit) ---------
+#     opt_factory = lambda m: torch.optim.Adam(m.parameters(), lr=1e-3, weight_decay=0.0)
+#     sch_factory = lambda opt: torch.optim.lr_scheduler.StepLR(
+#         opt, step_size=50, gamma=0.5
+#     )
 
-    # --------- episode knobs (only what we truly use) ---------
-    META_BATCH = 4
-    K_SUPPORT = 5
-    Q_QUERY = 10  # None => take all remaining
-    INNER_STEPS = 3
-    INNER_LR = 2e-3
-    STEPS_PER_EPO = 2
-    RUN_SIZE = 100  # episode indexing granularity
-    EPOCHS = 10
+#     # --------- episode knobs (only what we truly use) ---------
+#     META_BATCH = 4
+#     K_SUPPORT = 5
+#     Q_QUERY = 10  # None => take all remaining
+#     INNER_STEPS = 3
+#     INNER_LR = 2e-3
+#     STEPS_PER_EPO = 2
+#     RUN_SIZE = 100  # episode indexing granularity
+#     EPOCHS = 10
 
-    # --------- init MetaEngine with explicit args only ---------
-    engine = MetaEngine(
-        model=model,
-        model_str=model_str,
-        experiment_name="mi_fsl_test_no_configs",
-        device=device,
-        n_epochs=EPOCHS,
-        train_ds=train_ds,
-        val_ds=val_ds,
-        test_ds=test_ds,
-        S_train=sm.S_train,
-        S_val=sm.S_val,
-        S_test=sm.S_test,
-        loss_fn=None,  # will default to CrossEntropyLoss inside
-        optimizer_factory=opt_factory,
-        scheduler_factory=sch_factory,
-        meta_batch_size=META_BATCH,
-        k_support=K_SUPPORT,
-        q_query=Q_QUERY,
-        inner_steps=INNER_STEPS,
-        inner_lr=INNER_LR,
-        steps_per_epoch=STEPS_PER_EPO,
-        run_size=RUN_SIZE,
-        # keep perf + checkpointing boring for tests
-        use_amp=True,
-        non_blocking=True,
-        pin_memory=False,
-        use_compile=False,
-        use_wandb=False,
-        save_regular_checkpoints=False,
-        save_final_checkpoint=True,
-        save_best_checkpoints=False,
-        save_regular_checkpoints_interval=10,
-        checkpoint_dir=Path("./ckpts/mi_fsl_test_no_configs"),
-        early_stopping=False,
-        seed=SEED,
-        n_patches_labram=n_patches_labram,
-        samples=samples,
-        channels=62,
-        electrodes=electrodes,
-    )
+#     # --------- init MetaEngine with explicit args only ---------
+#     engine = MetaEngine(
+#         model=model,
+#         model_str=model_str,
+#         experiment_name="mi_fsl_test_no_configs",
+#         device=device,
+#         n_epochs=EPOCHS,
+#         train_ds=train_ds,
+#         val_ds=val_ds,
+#         test_ds=test_ds,
+#         S_train=sm.S_train,
+#         S_val=sm.S_val,
+#         S_test=sm.S_test,
+#         loss_fn=None,  # will default to CrossEntropyLoss inside
+#         optimizer_factory=opt_factory,
+#         scheduler_factory=sch_factory,
+#         meta_batch_size=META_BATCH,
+#         k_support=K_SUPPORT,
+#         q_query=Q_QUERY,
+#         inner_steps=INNER_STEPS,
+#         inner_lr=INNER_LR,
+#         steps_per_epoch=STEPS_PER_EPO,
+#         run_size=RUN_SIZE,
+#         # keep perf + checkpointing boring for tests
+#         use_amp=True,
+#         non_blocking=True,
+#         pin_memory=False,
+#         use_compile=False,
+#         use_wandb=False,
+#         save_regular_checkpoints=False,
+#         save_final_checkpoint=True,
+#         save_best_checkpoints=False,
+#         save_regular_checkpoints_interval=10,
+#         checkpoint_dir=Path("./ckpts/mi_fsl_test_no_configs"),
+#         early_stopping=False,
+#         seed=SEED,
+#         n_patches_labram=n_patches_labram,
+#         samples=samples,
+#         channels=62,
+#         electrodes=electrodes,
+#     )
 
-    engine.train()
+#     engine.train()

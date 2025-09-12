@@ -1,0 +1,242 @@
+import logging
+from datetime import datetime
+from pathlib import Path
+
+import yaml
+import torch
+
+from meta_engine import MetaEngine
+from models import EEGNet, load_labram
+from subject_split import KUTrialDataset, SplitConfig, SplitManager
+from preprocess_KU_data import get_ku_dataset_channels
+
+# -------- logging ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+
+# -------- config -----------
+with open("meta_hyperparameters.yaml", "r") as f:
+    config = yaml.safe_load(f)
+
+exp_cfg   = config.get("experiment", {})
+data_cfg  = config.get("data", {})
+meta_cfg  = config.get("meta", {})
+opt_cfg   = config.get("optimizations", {})
+peft_cfg  = config.get("peft_config", {})
+eegnet_hp = config.get("eegnet", {})
+labram_hp = config.get("labram", {})
+
+# core exp
+SEED      = int(exp_cfg.get("seed", 111))
+N_EPOCHS  = int(exp_cfg["epochs"])
+OPTIMIZER = exp_cfg["optimizer"]
+SCHEDULER = exp_cfg["scheduler"]
+
+# perf
+USE_AMP      = bool(opt_cfg.get("use_amp", True))
+USE_COMPILE  = bool(opt_cfg.get("use_compile", False))
+NON_BLOCKING = bool(opt_cfg.get("non_blocking", True))
+PIN_MEMORY   = bool(opt_cfg.get("pin_memory", False))
+
+chans   = int(data_cfg.get("input_channels", 62))
+samples = int(data_cfg.get("samples", 1000))
+classes = int(data_cfg.get("num_classes", 2))
+# -------- model ------------
+model_name = exp_cfg["model"].lower()
+if model_name == "labram":
+    model = load_labram(
+        lora=labram_hp.get("lora", True),
+        peft_config=peft_cfg,
+    )
+    model_str = "labram"
+elif model_name == "eegnet":
+    model = EEGNet(
+        nb_classes=classes,
+        Chans=chans,
+        Samples=samples,
+        dropoutRate=eegnet_hp.get("dropoutRate", 0.5),
+        kernLength=eegnet_hp.get("kernLength", 64),
+        F1=eegnet_hp.get("F1", 8),
+        D=eegnet_hp.get("D", 2),
+        F2=eegnet_hp.get("F2", eegnet_hp.get("F1", 8) * eegnet_hp.get("D", 2)),
+    )
+    model_str = "eegnet"
+else:
+    raise ValueError("experiment.model must be one of: labram, eegnet")
+
+# name like train.py
+name_list = [
+    f"{exp_cfg['model']}",
+    f"lr{(labram_hp or eegnet_hp).get('lr', 1e-3)}",
+    f"wd{(labram_hp or eegnet_hp).get('weight_decay', 0.0)}",
+    OPTIMIZER,
+    SCHEDULER,
+    datetime.now().strftime("%H%M%S"),
+]
+experiment_name = "_".join(map(str, name_list))
+logger.info(f"Experiment name: {experiment_name}")
+
+# -------- device & seeds ---
+if exp_cfg.get("device", "cuda") == "mps":
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device(exp_cfg.get("device", "cuda") if torch.cuda.is_available() else "cpu")
+logger.info(f"USING DEVICE: {DEVICE}")
+
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+
+# -------- data/splits ------
+DATASET_PATH = data_cfg["path"]
+SUBJECT_IDS  = data_cfg.get("subjects") or range(1, exp_cfg.get("n_subjects", 9) + 1)
+TRAIN_PROP   = float(data_cfg.get("train_proportion", 0.90))
+LEAVE_OUT    = data_cfg.get("leave_out")
+M_LEAVE_OUT  = data_cfg.get("m_leave_out")
+
+split_cfg = SplitConfig(
+    subject_ids=SUBJECT_IDS,
+    m_leave_out=M_LEAVE_OUT,
+    subject_ids_leave_out=LEAVE_OUT,
+    train_proportion=TRAIN_PROP,
+    seed=SEED,
+)
+sm = SplitManager(split_cfg)
+logger.info(f"Train subjects: {sm.S_train}")
+logger.info(f"Val subjects:   {sm.S_val}")
+logger.info(f"Test subjects:  {sm.S_test}")
+
+# NOTE: MetaEngine expects raw trials; per-model shaping happens inside fetch_by_indices.
+train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
+val_ds   = KUTrialDataset(DATASET_PATH, sm.S_val)
+test_ds  = KUTrialDataset(DATASET_PATH, sm.S_test)
+
+# -------- optim/sched factories ----
+lr = float((labram_hp or eegnet_hp).get("lr", 1e-3))
+wd = float((labram_hp or eegnet_hp).get("weight_decay", 0.0))
+
+def make_optimizer(m: torch.nn.Module):
+    if OPTIMIZER.lower() == "adamw":
+        return torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=wd)
+    elif OPTIMIZER.lower() == "adam":
+        return torch.optim.Adam(m.parameters(), lr=lr, weight_decay=wd)
+    else:
+        raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+
+def make_scheduler(opt: torch.optim.Optimizer):
+    if SCHEDULER == "CosineAnnealingLR":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=N_EPOCHS)
+    elif SCHEDULER == "CosineAnnealingWarmRestarts":
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            opt,
+            T_0=max(1, N_EPOCHS // int(exp_cfg.get("T_0", 2))),
+            T_mult=int(exp_cfg.get("T_mult", 2)),
+        )
+    elif SCHEDULER in (None, "None"):
+        return None
+    else:
+        raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
+
+# -------- episode knobs ---------------
+META_BATCH   = int(meta_cfg["meta_batch_size"])
+K_SUPPORT    = int(meta_cfg["k_support"])
+Q_QUERY      = meta_cfg.get("q_query")  # can be None
+INNER_STEPS  = int(meta_cfg["inner_steps"])
+INNER_LR     = float(meta_cfg["inner_lr"])
+STEPS_PER_EP = int(meta_cfg["steps_per_epoch"])
+RUN_SIZE     = int(meta_cfg["run_size"])
+
+# labram-specific shaping knobs used by MetaEngine’s fetch path
+n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
+patch_len        = int(data_cfg.get("patch_length", 200))
+channels         = int(data_cfg.get("input_channels", 62))
+electrodes       = data_cfg.get("electrodes") or get_ku_dataset_channels()
+
+# warm up lazy bits (esp. labram)
+model = model.to(DEVICE)
+with torch.no_grad():
+    if model_str == "labram":
+        _ = model(
+            x=torch.zeros(1, chans, n_patches_labram, samples, device=DEVICE),
+            electrodes=electrodes,
+        )
+    else:
+        _ = model(
+            x=torch.zeros(1, chans, samples, device=DEVICE))
+
+# -------- engine -----------------------
+engine = MetaEngine(
+    # core
+    model=model,
+    model_str=model_str,
+    experiment_name=experiment_name,
+    device=DEVICE,
+    n_epochs=N_EPOCHS,
+
+    # datasets / splits
+    train_ds=train_ds, 
+    val_ds=val_ds, 
+    test_ds=test_ds,
+    S_train=sm.S_train, 
+    S_val=sm.S_val, 
+    S_test=sm.S_test,
+
+    # optim
+    loss_fn=None,
+    optimizer_factory=make_optimizer,
+    scheduler_factory=make_scheduler,
+
+    # episodes
+    meta_batch_size=META_BATCH,
+    k_support=K_SUPPORT,
+    q_query=Q_QUERY,
+    inner_steps=INNER_STEPS,
+    inner_lr=INNER_LR,
+    steps_per_epoch=STEPS_PER_EP,
+    run_size=RUN_SIZE,
+
+    # perf
+    use_amp=USE_AMP,
+    non_blocking=NON_BLOCKING,
+    pin_memory=PIN_MEMORY,
+    use_compile=USE_COMPILE,
+
+    # logging
+    use_wandb=exp_cfg.get("log_to_wandb", False),
+    wandb_entity=exp_cfg.get("wandb_entity"),
+    wandb_project=exp_cfg.get("wandb_project"),
+    config_for_logging=config,
+
+    # checkpoints
+    save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
+    save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
+    save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
+    save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
+    checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints" / experiment_name),
+
+    # early stopping (on meta-val)
+    early_stopping=exp_cfg.get("early_stopping", True),
+    early_stopping_patience=exp_cfg.get("early_stopping_patience", 10),
+    early_stopping_delta=exp_cfg.get("early_stopping_delta", 0.0),
+
+    # RNG + shaping
+    seed=SEED,
+    n_patches_labram=n_patches_labram,
+    samples=patch_len,
+    channels=channels,
+    electrodes=electrodes,
+)
+
+# -------- run --------------------------
+if __name__ == "__main__":
+    try:
+        engine.train()
+    finally:
+        train_ds.close()
+        val_ds.close()
+        test_ds.close()
