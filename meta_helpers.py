@@ -114,7 +114,11 @@ def sample_query(sid: int, query_run: int, epi: EpisodeIndex, Q_per_class: int, 
 
 
 def fetch_by_indices(ds: KUTrialDataset, epi: EpisodeIndex, sid: int, local_idxs: List[int], device: torch.device,
-    non_blocking: bool = True,
+    non_blocking: bool = True, 
+    model_str: str = "labram",
+    n_patches_labram: int = 4,
+    samples: int = 200,
+    channels: int = 62,
 ):
     import numpy as np
     if len(local_idxs) == 0:
@@ -131,5 +135,7 @@ def fetch_by_indices(ds: KUTrialDataset, epi: EpisodeIndex, sid: int, local_idxs
         ys.append(y)
 
     X = torch.stack(Xs, 0).to(device, non_blocking=non_blocking)
+    if model_str == "labram":
+        X = X = X.view(X.shape[0], channels, n_patches_labram, samples)
     y = torch.stack(ys, 0).to(device, non_blocking=non_blocking)
     return X, y
