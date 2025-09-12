@@ -19,15 +19,16 @@ from meta_helpers import (
 
 logger = logging.getLogger(__name__)
 
-     
+
 class LabramWrapper(nn.Module):
     def __init__(self, model, electrodes):
         super().__init__()
         self.model = model
         self.electrodes = electrodes
-    
+
     def forward(self, x):
         return self.model(x, electrodes=self.electrodes)
+
 
 class Metrics:
     epoch: Optional[int] = None
@@ -228,19 +229,19 @@ class MetaEngine:
             else:
                 out.append((p - lr * g).detach().requires_grad_(True))
         return out
-    
+
     def _forward_with(self, params_dict, x):
         if self.model_str == "labram":
             # For Labram, we need to temporarily modify the model's forward method
             # to include the electrodes parameter
             original_forward = self.model.forward
-            
+
             def labram_forward(x):
-                return original_forward(x, electrodes=self.electrodes)
-            
+                return original_forward(x=x, electrodes=self.electrodes)
+
             # Temporarily replace the forward method
             self.model.forward = labram_forward
-            
+
             try:
                 if self.use_amp:
                     with torch.autocast(device_type=self.device.type):
@@ -544,14 +545,20 @@ if __name__ == "__main__":
     #     F2=16
     # )
 
+    peft_config = {
+        "r": 1,
+        "lora_alpha": 32,
+        "lora_dropout": 0.5,
+        "target_modules": ["qkv", "fc1", "proj"],
+    }
     model_str = "labram"
     model = load_labram(
-        lora=False,
-        peft_config=None,
+        lora=True,
+        peft_config=peft_config,
     )
 
     # --------- data / splits (explicit; no dicts) ---------
-    SUBJECT_IDS = list(range(1, 9))
+    SUBJECT_IDS = list(range(1, 3))
     LEAVE_OUT = [8, 9]  # test subjects for quick sanity check
     TRAIN_PROP = 0.9
     SEED = 111
@@ -580,7 +587,7 @@ if __name__ == "__main__":
     electrodes = get_ku_dataset_channels()
     with torch.no_grad():
         _ = model(
-            torch.zeros(1, chans, n_patches_labram, samples, device=device),
+            x=torch.zeros(1, chans, n_patches_labram, samples, device=device),
             electrodes=electrodes,
         )
 
@@ -591,12 +598,12 @@ if __name__ == "__main__":
     )
 
     # --------- episode knobs (only what we truly use) ---------
-    META_BATCH = 8
+    META_BATCH = 4
     K_SUPPORT = 5
-    Q_QUERY = 100  # None => take all remaining
-    INNER_STEPS = 5
+    Q_QUERY = 10  # None => take all remaining
+    INNER_STEPS = 3
     INNER_LR = 2e-3
-    STEPS_PER_EPO = 8
+    STEPS_PER_EPO = 2
     RUN_SIZE = 100  # episode indexing granularity
     EPOCHS = 10
 
