@@ -231,47 +231,18 @@ class MetaEngine:
         return out
 
     def _forward_with(self, params_dict, x):
-        if self.model_str == "labram":
-            # For Labram, we need to temporarily modify the model's forward method
-            # to include the electrodes parameter
-            original_forward = self.model.forward
-
-            def labram_forward(x):
-                return original_forward(x=x, electrodes=self.electrodes)
-
-            # Temporarily replace the forward method
-            self.model.forward = labram_forward
-
-            try:
-                if self.use_amp:
-                    with torch.autocast(device_type=self.device.type):
-                        return functional_call(self.model, params_dict, (x,))
-                else:
-                    return functional_call(self.model, params_dict, (x,))
-            finally:
-                # Restore the original forward method
-                self.model.forward = original_forward
-        else:
-            # For other models, use the standard approach
-            if self.use_amp:
-                with torch.autocast(device_type=self.device.type):
-                    return functional_call(self.model, params_dict, (x,))
-            else:
-                return functional_call(self.model, params_dict, (x,))
-
-    def _forward(self, X):
-        """Single forward that respects model kind and AMP."""
         if self.use_amp:
             with torch.autocast(device_type=self.device.type):
-                if self.model_str == "labram":
-                    return self.model(x=X, electrodes=self.electrodes)
-                else:
-                    return self.model(X)
+                return functional_call(self.model, params_dict, args=(), kwargs={"x": x, "electrodes": self.electrodes})
         else:
-            if self.model_str == "labram":
+            return functional_call(self.model, params_dict, args=(), kwargs={"x": x, "electrodes": self.electrodes})
+
+    def _forward(self, X):
+        if self.use_amp:
+            with torch.autocast(device_type=self.device.type):
                 return self.model(x=X, electrodes=self.electrodes)
-            else:
-                return self.model(X)
+        else:
+            return self.model(x=X, electrodes=self.electrodes)
 
     # ---------- logging (compact console; wandb optional) ----------
     def log_metrics(self):
@@ -558,7 +529,7 @@ if __name__ == "__main__":
     )
 
     # --------- data / splits (explicit; no dicts) ---------
-    SUBJECT_IDS = list(range(1, 3))
+    SUBJECT_IDS = list(range(1, 10))
     LEAVE_OUT = [8, 9]  # test subjects for quick sanity check
     TRAIN_PROP = 0.9
     SEED = 111
@@ -576,10 +547,9 @@ if __name__ == "__main__":
     logger.info(f"Val subjects:   {sm.S_val}")
     logger.info(f"Test subjects:  {sm.S_test}")
 
-    # NOTE: for EEGNet we want (B, C, T). Ensure your dataset returns T=800 when flatten_patches=True.
-    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train, flatten_patches=True)
-    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val, flatten_patches=True)
-    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test, flatten_patches=True)
+    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
+    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
+    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
 
     # --------- device + quick warmup (defensive for Lazy layers) ---------
     device = "cuda" if torch.cuda.is_available() else "cpu"
