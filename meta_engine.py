@@ -317,10 +317,7 @@ class MetaEngine:
                 sid,
                 sup_idx,
                 self.device,
-                model_str=self.model_str,
-                n_patches_labram=self.n_patches_labram,
-                samples=self.samples,
-                channels=self.channels,
+                self.non_blocking,
             )
             Xq, yq = fetch_by_indices(
                 self.train_ds,
@@ -328,10 +325,7 @@ class MetaEngine:
                 sid,
                 que_idx,
                 self.device,
-                model_str=self.model_str,
-                n_patches_labram=self.n_patches_labram,
-                samples=self.samples,
-                channels=self.channels,
+                self.non_blocking,
             )
 
             fast = self._clone_as_leaf(base_params)
@@ -416,10 +410,7 @@ class MetaEngine:
                 sid,
                 sup_idx,
                 self.device,
-                model_str=self.model_str,
-                n_patches_labram=self.n_patches_labram,
-                samples=self.samples,
-                channels=self.channels,
+                self.non_blocking,
             )
             Xq, yq = fetch_by_indices(
                 self.val_ds,
@@ -427,10 +418,7 @@ class MetaEngine:
                 sid,
                 que_idx,
                 self.device,
-                model_str=self.model_str,
-                n_patches_labram=self.n_patches_labram,
-                samples=self.samples,
-                channels=self.channels,
+                self.non_blocking,
             )
 
             # ----- inner adaptation on cloned leafs (requires grad) -----
