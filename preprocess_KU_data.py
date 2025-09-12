@@ -11,8 +11,6 @@ from scipy.signal import decimate, butter, filtfilt, iirnotch
 from tqdm import tqdm
 
 
-
-
 def get_standard_1020_channels():
     """Get the standard 10-20 EEG channel layout from Lee et al."""
     return [
@@ -158,11 +156,11 @@ def get_standard_1020_channels():
 def get_ku_dataset_channels():
     """Get the channel names from the KU dataset."""
     return [
-        "Fp1",
-        "Fp2",
+        "FP1",
+        "FP2",
         "F7",
         "F3",
-        "Fz",
+        "FZ",
         "F4",
         "F8",
         "FC5",
@@ -171,7 +169,7 @@ def get_ku_dataset_channels():
         "FC6",
         "T7",
         "C3",
-        "Cz",
+        "CZ",
         "C4",
         "T8",
         "TP9",
@@ -182,12 +180,12 @@ def get_ku_dataset_channels():
         "TP10",
         "P7",
         "P3",
-        "Pz",
+        "PZ",
         "P4",
         "P8",
         "PO9",
         "O1",
-        "Oz",
+        "OZ",
         "O2",
         "PO10",
         "FC3",
@@ -197,11 +195,11 @@ def get_ku_dataset_channels():
         "C2",
         "C6",
         "CP3",
-        "CPz",
+        "CPZ",
         "CP4",
         "P1",
         "P2",
-        "POz",
+        "POZ",
         "FT9",
         "FTT9h",
         "TTP7h",
@@ -435,7 +433,6 @@ def select_channels(data, available_channels, target_channels):
     return filtered_data, included_channels, excluded_channels
 
 
-
 def create_patches(data, patch_size, overlap=0, verbose=False):
     """
     Convert EEG data to patches for LaBraM-style models.
@@ -451,9 +448,10 @@ def create_patches(data, patch_size, overlap=0, verbose=False):
     """
     epochs, channels, time_points = data.shape
 
-
     if overlap == 0:
-        assert time_points % patch_size == 0, "Time points must be divisible by patch size"
+        assert (
+            time_points % patch_size == 0
+        ), "Time points must be divisible by patch size"
         # Non-overlapping patches
         num_patches = time_points // patch_size
         # Reshape to patches
@@ -506,8 +504,12 @@ def get_data(sess, subj, config: DataPreprocessingConfig):
         )
         if sess == 1 and subj == 1:
             print(f"\nChannel selection summary:")
-            print(f"  Included channels ({len(included_channels)}): {included_channels}")
-            print(f"  Excluded channels ({len(excluded_channels)}): {excluded_channels}")
+            print(
+                f"  Included channels ({len(included_channels)}): {included_channels}"
+            )
+            print(
+                f"  Excluded channels ({len(excluded_channels)}): {excluded_channels}"
+            )
 
     # Apply bandpass filter before decimation if requested
     if config.apply_bandpass:
@@ -584,7 +586,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+
     # indices = []
     # for channel in get_ku_dataset_channels():
     #     if channel.upper() in get_standard_1020_channels():
