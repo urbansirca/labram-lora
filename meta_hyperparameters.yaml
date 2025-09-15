@@ -3,7 +3,7 @@ experiment:
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  epochs: 60
+  epochs: 2
   optimizer: AdamW       # Adam | AdamW
   scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
   # logging / checkpoints / early stopping
@@ -72,3 +72,8 @@ eegnet:
   F1: 8
   D: 2
   F2: 16
+
+test:
+  shots_list: [0, 1, 2, 3, 4, 5, 10, 25, 50]
+  n_epochs: 10
+  save_dir: "results/test"
