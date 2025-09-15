@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Iterable
 
 import yaml
 import torch
@@ -120,11 +121,12 @@ test_ds  = KUTrialDataset(DATASET_PATH, sm.S_test)
 lr = float((labram_hp or eegnet_hp).get("lr", 1e-3))
 wd = float((labram_hp or eegnet_hp).get("weight_decay", 0.0))
 
-def make_optimizer(m: torch.nn.Module):
-    if OPTIMIZER.lower() == "adamw":
-        return torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=wd)
-    elif OPTIMIZER.lower() == "adam":
-        return torch.optim.Adam(m.parameters(), lr=lr, weight_decay=wd)
+def make_optimizer(params: Iterable[torch.nn.Parameter]):
+    opt = OPTIMIZER.lower()
+    if opt == "adamw":
+        return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
+    elif opt == "adam":
+        return torch.optim.Adam(list(params), lr=lr, weight_decay=wd)
     else:
         raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 

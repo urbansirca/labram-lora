@@ -19,17 +19,6 @@ from meta_helpers import (
 
 logger = logging.getLogger(__name__)
 
-
-class LabramWrapper(nn.Module):
-    def __init__(self, model, electrodes):
-        super().__init__()
-        self.model = model
-        self.electrodes = electrodes
-
-    def forward(self, x):
-        return self.model(x, electrodes=self.electrodes)
-
-
 class Metrics:
     epoch: Optional[int] = None
     # train-side (per outer step / epoch)
@@ -138,8 +127,6 @@ class MetaEngine:
         self.loss_fn = loss_fn or nn.CrossEntropyLoss()
         self.optimizer_factory = optimizer_factory
         self.scheduler_factory = scheduler_factory
-        self.optimizer = self.optimizer_factory(self.model)
-        self.scheduler = self.scheduler_factory(self.optimizer)
 
         # perf
         self.non_blocking = non_blocking
@@ -207,6 +194,32 @@ class MetaEngine:
         self.rng = random.Random(int(seed))
 
         self.base_param_shapes = [p.shape for p in self.model.parameters()]
+
+        self._audit_trainables()
+        self._allow_trainable = self._expected_trainable_names()
+
+        allow_params = [p for n,p in self.model.named_parameters() if n in self._allow_trainable]
+        assert allow_params, "No allowed trainable params — check policy/target_modules."
+        self.optimizer = optimizer_factory(allow_params)
+        self.scheduler = scheduler_factory(self.optimizer)
+
+    def _expected_trainable_names(self):
+        names = []
+        for n, p in self.model.named_parameters():
+            if p.requires_grad:
+                names.append(n)
+        return set(names)
+    
+    def _audit_trainables(self):
+        if hasattr(self.model, "print_trainable_parameters"):
+            self.model.print_trainable_parameters()
+
+        trainables = [(n, p.numel()) for n, p in self.model.named_parameters() if p.requires_grad]
+        frozen     = [(n, p.numel()) for n, p in self.model.named_parameters() if not p.requires_grad]
+        n_tr = sum(k for _, k in trainables)
+        n_fr = sum(k for _, k in frozen)
+        logger.info(f"Trainable params: {len(trainables)} tensors, {n_tr} elems")
+        logger.info(f"Frozen params:    {len(frozen)} tensors, {n_fr} elems")
 
     def _grad_norm(self, params) -> float:
         grad_tensors = [p.grad.detach() for p in params if p.grad is not None]
@@ -292,9 +305,9 @@ class MetaEngine:
 
     def meta_step(self, subjects_batch: List[int]):
         self.model.eval()  # freeze BN running stats during meta-episode
-        base_named = list(self.model.named_parameters())
-        base_params = [p for _, p in base_named]
-        base_names = [n for n, _ in base_named]
+        base_named = [(n,p) for n,p in self.model.named_parameters() if n in self._allow_trainable]
+        base_names = [n for n,_ in base_named]
+        base_params = [p for _,p in base_named]
 
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -396,9 +409,9 @@ class MetaEngine:
         total_count = 0
 
         # we never mutate base params; we only read them to create 'fast'
-        base_named = list(self.model.named_parameters())
-        base_params = [p for _, p in base_named]
-        base_names = [n for n, _ in base_named]
+        base_named = [(n,p) for n,p in self.model.named_parameters() if n in self._allow_trainable]
+        base_names = [n for n,_ in base_named]
+        base_params = [p for _,p in base_named]
 
         for sid in self.S_val:
             sup_idx, rq = sample_support(sid, self.val_epi, self.K, rng)
@@ -474,137 +487,3 @@ class MetaEngine:
 
             if self.scheduler is not None:
                 self.scheduler.step()
-
-
-# import logging, torch
-# from pathlib import Path
-# from subject_split import KUTrialDataset, SplitConfig, SplitManager
-# from models import EEGNet
-
-
-# if __name__ == "__main__":
-
-#     logging.basicConfig(level=logging.INFO)
-#     logger = logging.getLogger(__name__)
-
-#     # --------- minimal model setup (match dataset shape) ---------
-#     chans = 62
-#     n_patches_labram = 4
-#     samples = 200  # (4 patches * 200) flattened to T
-#     classes = 2
-
-#     # model = EEGNet(
-#     #     nb_classes=classes,
-#     #     Chans=chans,
-#     #     Samples=samples,
-#     #     dropoutRate=0.5,
-#     #     kernLength=64,
-#     #     F1=8,
-#     #     D=2,
-#     #     F2=16
-#     # )
-
-#     peft_config = {
-#         "r": 1,
-#         "lora_alpha": 32,
-#         "lora_dropout": 0.5,
-#         "target_modules": ["qkv", "fc1", "proj"],
-#     }
-#     model_str = "labram"
-#     model = load_labram(
-#         lora=True,
-#         peft_config=peft_config,
-#     )
-
-#     # --------- data / splits (explicit; no dicts) ---------
-#     SUBJECT_IDS = list(range(1, 10))
-#     LEAVE_OUT = [8, 9]  # test subjects for quick sanity check
-#     TRAIN_PROP = 0.9
-#     SEED = 111
-#     DATASET_PATH = "data/preprocessed/KU_mi_labram_preprocessed.h5"
-
-#     split_cfg = SplitConfig(
-#         subject_ids=SUBJECT_IDS,
-#         m_leave_out=None,
-#         subject_ids_leave_out=LEAVE_OUT,
-#         train_proportion=TRAIN_PROP,
-#         seed=SEED,
-#     )
-#     sm = SplitManager(split_cfg)
-#     logger.info(f"Train subjects: {sm.S_train}")
-#     logger.info(f"Val subjects:   {sm.S_val}")
-#     logger.info(f"Test subjects:  {sm.S_test}")
-
-#     train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
-#     val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
-#     test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
-
-#     # --------- device + quick warmup (defensive for Lazy layers) ---------
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-#     model = model.to(device)
-#     electrodes = get_ku_dataset_channels()
-#     with torch.no_grad():
-#         _ = model(
-#             x=torch.zeros(1, chans, n_patches_labram, samples, device=device),
-#             electrodes=electrodes,
-#         )
-
-#     # --------- optimizer / scheduler factories (explicit) ---------
-#     opt_factory = lambda m: torch.optim.Adam(m.parameters(), lr=1e-3, weight_decay=0.0)
-#     sch_factory = lambda opt: torch.optim.lr_scheduler.StepLR(
-#         opt, step_size=50, gamma=0.5
-#     )
-
-#     # --------- episode knobs (only what we truly use) ---------
-#     META_BATCH = 4
-#     K_SUPPORT = 5
-#     Q_QUERY = 10  # None => take all remaining
-#     INNER_STEPS = 3
-#     INNER_LR = 2e-3
-#     STEPS_PER_EPO = 2
-#     RUN_SIZE = 100  # episode indexing granularity
-#     EPOCHS = 10
-
-#     # --------- init MetaEngine with explicit args only ---------
-#     engine = MetaEngine(
-#         model=model,
-#         model_str=model_str,
-#         experiment_name="mi_fsl_test_no_configs",
-#         device=device,
-#         n_epochs=EPOCHS,
-#         train_ds=train_ds,
-#         val_ds=val_ds,
-#         test_ds=test_ds,
-#         S_train=sm.S_train,
-#         S_val=sm.S_val,
-#         S_test=sm.S_test,
-#         loss_fn=None,  # will default to CrossEntropyLoss inside
-#         optimizer_factory=opt_factory,
-#         scheduler_factory=sch_factory,
-#         meta_batch_size=META_BATCH,
-#         k_support=K_SUPPORT,
-#         q_query=Q_QUERY,
-#         inner_steps=INNER_STEPS,
-#         inner_lr=INNER_LR,
-#         steps_per_epoch=STEPS_PER_EPO,
-#         run_size=RUN_SIZE,
-#         # keep perf + checkpointing boring for tests
-#         use_amp=True,
-#         non_blocking=True,
-#         pin_memory=False,
-#         use_compile=False,
-#         use_wandb=False,
-#         save_regular_checkpoints=False,
-#         save_final_checkpoint=True,
-#         save_best_checkpoints=False,
-#         save_regular_checkpoints_interval=10,
-#         checkpoint_dir=Path("./ckpts/mi_fsl_test_no_configs"),
-#         early_stopping=False,
-#         seed=SEED,
-#         n_patches_labram=n_patches_labram,
-#         samples=samples,
-#         channels=62,
-#         electrodes=electrodes,
-#     )
-
-#     engine.train()
