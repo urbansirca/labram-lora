@@ -19,6 +19,7 @@ from meta_helpers import (
 
 logger = logging.getLogger(__name__)
 
+
 class Metrics:
     epoch: Optional[int] = None
     # train-side (per outer step / epoch)
@@ -198,8 +199,12 @@ class MetaEngine:
         self._audit_trainables()
         self._allow_trainable = self._expected_trainable_names()
 
-        allow_params = [p for n,p in self.model.named_parameters() if n in self._allow_trainable]
-        assert allow_params, "No allowed trainable params — check policy/target_modules."
+        allow_params = [
+            p for n, p in self.model.named_parameters() if n in self._allow_trainable
+        ]
+        assert (
+            allow_params
+        ), "No allowed trainable params — check policy/target_modules."
         self.optimizer = optimizer_factory(allow_params)
         self.scheduler = scheduler_factory(self.optimizer)
 
@@ -209,13 +214,19 @@ class MetaEngine:
             if p.requires_grad:
                 names.append(n)
         return set(names)
-    
+
     def _audit_trainables(self):
         if hasattr(self.model, "print_trainable_parameters"):
             self.model.print_trainable_parameters()
 
-        trainables = [(n, p.numel()) for n, p in self.model.named_parameters() if p.requires_grad]
-        frozen     = [(n, p.numel()) for n, p in self.model.named_parameters() if not p.requires_grad]
+        trainables = [
+            (n, p.numel()) for n, p in self.model.named_parameters() if p.requires_grad
+        ]
+        frozen = [
+            (n, p.numel())
+            for n, p in self.model.named_parameters()
+            if not p.requires_grad
+        ]
         n_tr = sum(k for _, k in trainables)
         n_fr = sum(k for _, k in frozen)
         logger.info(f"Trainable params: {len(trainables)} tensors, {n_tr} elems")
@@ -246,9 +257,19 @@ class MetaEngine:
     def _forward_with(self, params_dict, x):
         if self.use_amp:
             with torch.autocast(device_type=self.device.type):
-                return functional_call(self.model, params_dict, args=(), kwargs={"x": x, "electrodes": self.electrodes})
+                return functional_call(
+                    self.model,
+                    params_dict,
+                    args=(),
+                    kwargs={"x": x, "electrodes": self.electrodes},
+                )
         else:
-            return functional_call(self.model, params_dict, args=(), kwargs={"x": x, "electrodes": self.electrodes})
+            return functional_call(
+                self.model,
+                params_dict,
+                args=(),
+                kwargs={"x": x, "electrodes": self.electrodes},
+            )
 
     def _forward(self, X):
         if self.use_amp:
@@ -305,9 +326,13 @@ class MetaEngine:
 
     def meta_step(self, subjects_batch: List[int]):
         self.model.eval()  # freeze BN running stats during meta-episode
-        base_named = [(n,p) for n,p in self.model.named_parameters() if n in self._allow_trainable]
-        base_names = [n for n,_ in base_named]
-        base_params = [p for _,p in base_named]
+        base_named = [
+            (n, p)
+            for n, p in self.model.named_parameters()
+            if n in self._allow_trainable
+        ]
+        base_names = [n for n, _ in base_named]
+        base_params = [p for _, p in base_named]
 
         self.optimizer.zero_grad(set_to_none=True)
 
@@ -322,8 +347,8 @@ class MetaEngine:
         total_samples = []
 
         for sid in subjects_batch:
-            sup_idx, rq = sample_support(sid, self.train_epi, self.K, self.rng)
-            que_idx = sample_query(sid, rq, self.train_epi, self.Q, self.rng)
+            sup_idx, que_runs = sample_support(sid, self.train_epi, self.K, self.rng)
+            que_idx = sample_query(sid, que_runs, self.train_epi, self.Q, self.rng)
             Xs, ys = fetch_by_indices(
                 self.train_ds,
                 self.train_epi,
@@ -409,13 +434,17 @@ class MetaEngine:
         total_count = 0
 
         # we never mutate base params; we only read them to create 'fast'
-        base_named = [(n,p) for n,p in self.model.named_parameters() if n in self._allow_trainable]
-        base_names = [n for n,_ in base_named]
-        base_params = [p for _,p in base_named]
+        base_named = [
+            (n, p)
+            for n, p in self.model.named_parameters()
+            if n in self._allow_trainable
+        ]
+        base_names = [n for n, _ in base_named]
+        base_params = [p for _, p in base_named]
 
         for sid in self.S_val:
-            sup_idx, rq = sample_support(sid, self.val_epi, self.K, rng)
-            que_idx = sample_query(sid, rq, self.val_epi, self.Q, rng)
+            sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
+            que_idx = sample_query(sid, que_runs, self.val_epi, self.Q, rng)
 
             Xs, ys = fetch_by_indices(
                 self.val_ds,

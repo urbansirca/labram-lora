@@ -1,5 +1,5 @@
 experiment:
-  model: labram         # or "eegnet"
+  model: eegnet         # or "eegnet"
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
@@ -32,7 +32,7 @@ data:
   # EEGLab/Labram shaping
   n_patches_labram: 4
   patch_length: 200
-  samples: 200                    # 800 for EEGNet (200 for Labram)
+  samples: 800                    # 800 for EEGNet (200 for Labram)
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
@@ -40,7 +40,7 @@ meta:
   k_support: 5
   q_query: 100         # or null for “all remaining”
   inner_steps: 3
-  inner_lr: 0.002
+  inner_lr: 0.001
   steps_per_epoch: 4
   run_size: 100       # granularity for episode indexing
 
@@ -53,8 +53,10 @@ optimizations:
 # Model-specific blocks
 labram:
   lora: true
-  lr: 0.001
-  weight_decay: 0.0
+  lr: 0.0001
+  weight_decay: 0.002
+  adapter_checkpoint_dir: "weights/checkpoints/labram_adapter"
+
 
 peft_config:
   r: 1

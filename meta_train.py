@@ -7,7 +7,7 @@ import yaml
 import torch
 
 from meta_engine import MetaEngine
-from models import EEGNet, load_labram
+from models import EEGNet, load_labram, load_labram_with_adapter
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from preprocess_KU_data import get_ku_dataset_channels
 
@@ -49,11 +49,14 @@ classes = int(data_cfg.get("num_classes", 2))
 # -------- model ------------
 model_name = exp_cfg["model"].lower()
 if model_name == "labram":
-    model = load_labram(
-        lora=labram_hp.get("lora", True),
-        peft_config=peft_cfg,
-    )
+    # model = load_labram(
+    #     lora=labram_hp.get("lora", True),
+    #     peft_config=peft_cfg,
+    # )
+    model = load_labram_with_adapter(labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter"))
+
     model_str = "labram"
+    
 elif model_name == "eegnet":
     model = EEGNet(
         nb_classes=classes,

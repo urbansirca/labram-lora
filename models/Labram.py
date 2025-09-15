@@ -6,6 +6,8 @@ import torch.nn as nn
 from peft import get_peft_model, LoraConfig, TaskType
 import yaml
 import logging
+from peft import PeftModel
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,7 @@ def load_labram(lora=True, peft_config=None):
             lora_alpha=peft_config["lora_alpha"],
             lora_dropout=peft_config["lora_dropout"],
             target_modules=peft_config["target_modules"],
+            modules_to_save=["head"],
         )
         model = get_peft_model(model, lora_config)
 
@@ -85,6 +88,44 @@ def load_labram(lora=True, peft_config=None):
 
     # print("trainable parameters: ", [name for name, param in model.named_parameters() if param.requires_grad])
 
+    return model
+
+
+
+def load_labram_with_adapter(adapter_dir: str, device="cpu"):
+    # 1) Build your base LaBraM *without* LoRA first (same code you used pre-PEFT)
+    base_model = load_labram(lora=False)  # your function above, but with lora=False
+    base_model.to(device)
+
+    # 2) (If you added a minimal .config for PEFT before, do it again here)
+    class _Cfg:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+        def get(self, k, default=None):
+            return getattr(self, k, default)
+        def to_dict(self):
+            return self.__dict__.copy()
+
+    # PEFT occasionally checks these flags; harmless for non-HF models:
+    base_model.config = _Cfg(
+        use_return_dict=False,
+        tie_word_embeddings=False,
+    )
+
+    # 3) Load the adapter (the folder that has adapter_config.json + adapter_model.safetensors)
+    adapter_dir = Path(adapter_dir)
+    assert (adapter_dir / "adapter_config.json").exists()
+    assert (adapter_dir / "adapter_model.safetensors").exists()  # note: file is "adapter_model", not "adapter_mode"
+
+    model = PeftModel.from_pretrained(
+        base_model,
+        adapter_dir.as_posix(),
+        is_trainable=True,      # set True if you want to keep fine-tuning
+        adapter_name="default",  # or whatever you used when saving
+    )
+
+    # model.eval()  # if you're going to run inference
     return model
 
 
