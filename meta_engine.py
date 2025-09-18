@@ -81,7 +81,6 @@ class MetaEngine:
         # --- checkpoints (same knobs) ---
         save_regular_checkpoints: bool = False,
         save_final_checkpoint: bool = True,
-        save_best_checkpoints: bool = True,  # used if you implement ES below
         save_regular_checkpoints_interval: int = 10,
         checkpoint_dir: Optional[Union[str, Path]] = None,
         # --- RNG ---
@@ -162,7 +161,6 @@ class MetaEngine:
         # checkpoints
         self.save_regular_checkpoints = save_regular_checkpoints
         self.save_final_checkpoint = save_final_checkpoint
-        self.save_best_checkpoints = save_best_checkpoints
         self.save_regular_checkpoints_interval = int(save_regular_checkpoints_interval)
         self.checkpoint_root = (
             Path(checkpoint_dir)

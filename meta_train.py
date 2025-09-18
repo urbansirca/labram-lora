@@ -223,7 +223,6 @@ engine = MetaEngine(
     # checkpoints
     save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
     save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
-    save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
     save_regular_checkpoints_interval=exp_cfg.get(
         "save_regular_checkpoints_interval", 10
     ),

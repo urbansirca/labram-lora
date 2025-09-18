@@ -3,7 +3,8 @@ experiment:
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  epochs: 30
+  meta_iterations: 3000
+  validate_every: 60
   optimizer: AdamW       # Adam | AdamW
   scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
   # logging / checkpoints / early stopping
@@ -12,10 +13,9 @@ experiment:
   wandb_project: "EEG-FM"
 
 
-  save_regular_checkpoints: false
+  save_regular_checkpoints: true
   save_final_checkpoint: true
-  save_best_checkpoints: true
-  save_regular_checkpoints_interval: 5
+  save_regular_checkpoints_interval: 300
  
   # optional warm restarts extras
   T_0: 2
@@ -24,8 +24,8 @@ experiment:
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed.h5
   # subjects: [1,2,3,4,5,6,7,8,9,10]   # optional; else n_subjects used
-  # leave_out: [1,2,3,4,5,6]                # test set subjects
-  m_leave_out: 2                  # optional multi-LOO size
+  leave_out: [1,2,3,4,5,6]                # test set subjects
+  # m_leave_out: 2                  # optional multi-LOO size
   train_proportion: 0.9
   input_channels: 62
   num_classes: 2
@@ -41,9 +41,8 @@ meta:
   q_query: 10         # or null for “all remaining”
   inner_steps: 2
   inner_lr: 7e-5
-  steps_per_epoch: 100
   run_size: 100       # granularity for episode indexing
-  clip_grad_norm: 3.5
+  clip_grad_norm: 3.5  # torch.nn.utils.clip_grad_norm_
 
 optimizations:
   use_amp: false
@@ -52,23 +51,11 @@ optimizations:
   pin_memory: false
 
 # Model-specific blocks
-# labram:
-#   lora: true
-#   lr: 3.910517525546074e-05
-#   weight_decay: 0.003035567355119174
-#   adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e20_acc0.816"
-#   # adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/looped_runs/labram_leave_out1-6_lr0.002_wd0.002_AdamW_CosineAnnealingLR_224552/best_val_checkpoint"
-
 labram:
   lora: true
-  lr: 2e-4            # “base” (for any decay group)
-  lora_lr: 3e-4       # adapters, biases, norms (no decay)
-  head_lr: 2e-4
-  weight_decay: 1e-4  # decay group
-  head_weight_decay: 5e-4
-  # adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e20_acc0.816"
+  lr: 2e-4 
+  weight_decay: 1e-4
   adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e10_acc0.686"
-
 
 peft_config:
   r: 2
