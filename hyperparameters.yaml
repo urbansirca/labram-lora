@@ -4,7 +4,6 @@ experiment:
   model: "labram"
   seed: 111
   dataset: "KU"
-  meta: false
   optimizer: "AdamW"
   scheduler: "CosineAnnealingLR"
   T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
@@ -52,7 +51,7 @@ data:
   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
   num_classes: 2 
   input_channels: 62
-  num_samples: 1000
+  samples: 800 # 800 for eegnet
   n_patches_labram: 4 # number of patches in the labram model
   patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
   trial_length: 800 # length of the trial in samples
@@ -89,21 +88,13 @@ peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
     "fc1"
   ]
 
-eegnet: #TODO: properly handle lr and weight_decay when eegnet
+eegnet:
   lr: 0.001
-  weight_decay: 0.002
+  weight_decay: 0.0
   dropoutRate: 0.5
   kernLength: 64
   F1: 8
-  F2: 16
   D: 2
-
-deepconvnet:
-  lr: 0.001
-  batch_size: 32
-  seed: 42
-  num_classes: 2
-  input_channels: 22
-  input_rows: 1
+  F2: 16
 
 

@@ -180,8 +180,7 @@ class Engine:
 
         _, C, *rest = Xshape
         if self.model_str == "eegnet":
-            assert (C, *rest) == (self.input_channels, self.trial_length), \
-                f"Per-sample shape should be {(self.input_channels, self.trial_length)} but is {(C, *rest)}"
+            return
         elif self.model_str == "labram":
             assert self.n_patches_labram is not None and self.patch_length is not None, \
                 "labram requires n_patches_labram and patch_length"

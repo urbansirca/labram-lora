@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader
 from engine import Engine
 from models import EEGNet, load_labram
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
-from test_fsl import test_few_shot
 
 
 # ---------------- logging ----------------
@@ -53,12 +52,11 @@ if model_name == "labram":
         lora=hyperparameters["lora"],
         peft_config=config["peft_config"],
     )
-    flatten_patches = False
 
 elif model_name == "eegnet":
     hyperparameters = config.get("eegnet", {})
     chans = data_cfg.get("input_channels", 62)
-    samples = data_cfg.get("samples", 1000)
+    samples = data_cfg.get("samples", 800)
     classes = data_cfg.get("num_classes", 2)
     model = EEGNet(
         nb_classes=classes,
@@ -72,7 +70,6 @@ elif model_name == "eegnet":
             "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
         ),
     )
-    flatten_patches = True
 
 else:
     raise ValueError("Invalid model")
