@@ -130,9 +130,9 @@ logger.info(f"Val subjects:   {sm.S_val}")
 logger.info(f"Test subjects:  {sm.S_test}")
 
 # ---- datasets ----
-train_ds = KUTrialDataset(DATASET_PATH, sm.S_train, flatten_patches=flatten_patches)
-val_ds = KUTrialDataset(DATASET_PATH, sm.S_val, flatten_patches=flatten_patches)
-test_ds = KUTrialDataset(DATASET_PATH, sm.S_test, flatten_patches=flatten_patches)
+train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
+val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
+test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
 train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val)
 
 
