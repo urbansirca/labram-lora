@@ -17,6 +17,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class SaveBestParamsCallback:
+    def __call__(self, study, trial):
+        # Save best params after each trial
+        if study.best_trial.number == trial.number:  # Only save if this trial was the best
+            Path("optuna").mkdir(parents=True, exist_ok=True)
+            with open("optuna/best_hyperparameters.yaml", "w") as f:
+                yaml.dump(study.best_params, f)
+            logger.info(f"Updated best hyperparameters after trial {trial.number}: {study.best_value:.4f}")
+
 def load_model_from_checkpoint(checkpoint_path, lora_dropout=0.5, device="cpu"):
     """Load model from checkpoint or create fresh model if None."""
     if checkpoint_path is None:
@@ -37,8 +46,7 @@ def load_model_from_checkpoint(checkpoint_path, lora_dropout=0.5, device="cpu"):
     if (Path(checkpoint_path) / "adapter_config.json").exists():
         return load_labram_with_adapter(checkpoint_path, device)
     else:
-        return load_labram(lora=False)
-
+        raise ValueError(f"Checkpoint path {checkpoint_path} does not exist")
 
 def suggest_param(trial, name, config_value):
     """Suggest parameter based on config value."""
@@ -198,7 +206,7 @@ def objective(trial):
     available_paths = checkpoints_config.get("available_paths")
     if available_paths is None:
         available_paths = []
-    checkpoint_choices = [None] + available_paths
+    checkpoint_choices = available_paths # + [None]
     params["checkpoint_path"] = trial.suggest_categorical(
         "checkpoint_path", checkpoint_choices
     )
@@ -445,6 +453,8 @@ def main():
             logger.info(f"WandB entity: {wandb_entity}")
     else:
         logger.info("WandB integration disabled")
+    
+    callbacks.append(SaveBestParamsCallback())
 
     logger.info("Configuration:")
     logger.info(f"  Number of trials: 50")
