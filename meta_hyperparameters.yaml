@@ -43,6 +43,7 @@ meta:
   inner_lr: 7e-5
   steps_per_epoch: 100
   run_size: 100       # granularity for episode indexing
+  clip_grad_norm: 3.5
 
 optimizations:
   use_amp: false

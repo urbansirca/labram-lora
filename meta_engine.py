@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import math
 import random
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -45,7 +46,8 @@ class MetaEngine:
         model_str: str,
         experiment_name: str,
         device: Union[str, torch.device],
-        n_epochs: int,
+        meta_iterations: int,
+        validate_every: int,
         # --- datasets / splits ---
         train_ds,
         val_ds,
@@ -65,7 +67,6 @@ class MetaEngine:
         q_query: Optional[int],  # None => all remaining
         inner_steps: int,
         inner_lr: float,
-        steps_per_epoch: int,
         run_size: int,  # used for episode indexing
         # --- perf knobs (same names/semantics as Engine) ---
         use_amp: bool = True,
@@ -94,6 +95,7 @@ class MetaEngine:
         samples: int = 200,
         channels: int = 62,
         electrodes: List[str] = None,
+        clip_grad_norm = None,
     ):
         # device / model
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -103,9 +105,9 @@ class MetaEngine:
         self.model_str = model_str
         self.use_amp = use_amp
 
-        # id / epochs
+        # id / meta_iterations
         self.experiment_name = experiment_name
-        self.n_epochs = int(n_epochs)
+        self.meta_iterations = int(meta_iterations)
 
         # datasets / splits
         self.train_ds, self.val_ds, self.test_ds = train_ds, val_ds, test_ds
@@ -117,7 +119,7 @@ class MetaEngine:
         self.Q = q_query
         self.inner_steps = int(inner_steps)
         self.inner_lr = float(inner_lr)
-        self.steps_per_epoch = int(steps_per_epoch)
+        self.validate_every = int(validate_every)
 
         # episode indices (explicit run_size)
         self.train_epi = build_episode_index(self.train_ds, run_size=run_size)
@@ -128,6 +130,7 @@ class MetaEngine:
         self.loss_fn = loss_fn or nn.CrossEntropyLoss()
         self.optimizer_factory = optimizer_factory
         self.scheduler_factory = scheduler_factory
+        self.clip_grad_norm = clip_grad_norm
 
         # perf
         self.non_blocking = non_blocking
@@ -238,8 +241,6 @@ class MetaEngine:
             return 0.0
         return torch.norm(torch.stack([torch.norm(g) for g in grad_tensors])).item()
 
-    # def _clone_as_leaf(self, params):
-    #     return [p.detach().clone().requires_grad_(True) for p in params]
     def _clone_as_leaf(self, params):
         return [
             torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in params
@@ -299,7 +300,7 @@ class MetaEngine:
         else:
             torch.save(self.model.state_dict(), f"{out_stem}.pt")
         metadata = {
-            "epoch": getattr(self.metrics, "epoch", None),
+            "iteration": getattr(self.metrics, "iteration", None),
             "train_accuracy": getattr(self.metrics, "train_accuracy", None),
             "val_accuracy": getattr(self.metrics, "val_accuracy", None),
             "query_loss": getattr(self.metrics, "query_loss", None),
@@ -336,11 +337,7 @@ class MetaEngine:
 
         self.optimizer.zero_grad(set_to_none=True)
 
-        # outer_loss_sum = 0.0
         outer_losses = []
-        # outer_correct = 0
-        # outer_count = 0
-        # inner_loss_accum, inner_loss_count = 0.0, 0
         inner_losses = []
 
         correct_preds = []
@@ -369,20 +366,16 @@ class MetaEngine:
             fast = self._clone_as_leaf(base_params)
             fast_dict = dict(zip(base_names, fast))
             for _ in range(self.inner_steps):
-                # fast_dict = {n: p for n, p in zip(base_names, fast)}
                 for name, param in zip(base_names, fast):
                     fast_dict[name] = param
                 logits_s = self._forward_with(fast_dict, Xs)
                 Ls = nn.functional.cross_entropy(logits_s, ys)
-                # inner_loss_accum += Ls.detach()
                 inner_losses.append(Ls.detach())
-                # inner_loss_count += 1
                 grads = torch.autograd.grad(
                     Ls, fast, create_graph=False, retain_graph=False, allow_unused=True
                 )
                 fast = self._sgd_update_detached(fast, grads, self.inner_lr)
 
-            # fast_dict = {n: p for n, p in zip(base_names, fast)}
             for name, param in zip(base_names, fast):
                 fast_dict[name] = param
             logits_q = self._forward_with(fast_dict, Xq)
@@ -401,13 +394,12 @@ class MetaEngine:
                 else:
                     bp.grad.add_(g)
 
-            # outer_loss_sum += float(Lq.detach().cpu())
             outer_losses.append(Lq.detach())
-            # outer_correct += (logits_q.argmax(1) == yq).sum().item()
-            # outer_count += yq.numel()
             correct_preds.append((logits_q.argmax(1) == yq).sum())
             total_samples.append(torch.tensor(yq.numel(), device=self.device))
 
+        if self.clip_grad_norm:
+            torch.nn.utils.clip_grad_norm_(base_params, max_norm=self.clip_grad_norm)
         self.optimizer.step()
 
         outer_correct = torch.stack(correct_preds).sum().item()
@@ -503,16 +495,15 @@ class MetaEngine:
         self.metrics.val_accuracy = total_correct / max(1, total_count)
 
     def train(self):
-        for epoch in range(self.n_epochs):
-            self.metrics.epoch = epoch + 1
-            for _ in range(self.steps_per_epoch):
-                T = min(self.T, len(self.S_train))
-                subjects_batch = self.rng.sample(self.S_train, k=T)
-                self.meta_step(subjects_batch)
-
-            if (epoch % 2) == 0:
-                self.meta_validate_epoch()
-                self.log_metrics()
+        for i in range(1, self.meta_iterations + 1):
+            self.metrics.iteration = i
+            T = min(self.T, len(self.S_train))
+            subjects_batch = self.rng.sample(self.S_train, k=T)
+            self.meta_step(subjects_batch)
 
             if self.scheduler is not None:
                 self.scheduler.step()
+
+            if self.validate_every > 0 and (i % self.validate_every) == 0:
+                self.meta_validate_epoch()
+                self.log_metrics()

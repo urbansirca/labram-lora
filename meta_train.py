@@ -36,6 +36,8 @@ labram_hp = config.get("labram", {})
 # core exp
 SEED = int(exp_cfg.get("seed", 111))
 N_EPOCHS = int(exp_cfg["epochs"])
+META_ITERS = int(exp_cfg["meta_iterations"])
+VALIDATE_EVERY = int(exp_cfg["validate_every"])
 OPTIMIZER = exp_cfg["optimizer"]
 SCHEDULER = exp_cfg["scheduler"]
 
@@ -143,11 +145,11 @@ def make_optimizer(params: Iterable[torch.nn.Parameter]):
 
 def make_scheduler(opt: torch.optim.Optimizer):
     if SCHEDULER == "CosineAnnealingLR":
-        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=N_EPOCHS)
+        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS)
     elif SCHEDULER == "CosineAnnealingWarmRestarts":
         return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             opt,
-            T_0=max(1, N_EPOCHS // int(exp_cfg.get("T_0", 2))),
+            T_0=max(1, META_ITERS // int(exp_cfg.get("T_0", 2))),
             T_mult=int(exp_cfg.get("T_mult", 2)),
         )
     elif SCHEDULER in (None, "None"):
@@ -162,8 +164,8 @@ K_SUPPORT = int(meta_cfg["k_support"])
 Q_QUERY = meta_cfg.get("q_query")  # can be None
 INNER_STEPS = int(meta_cfg["inner_steps"])
 INNER_LR = float(meta_cfg["inner_lr"])
-STEPS_PER_EP = int(meta_cfg["steps_per_epoch"])
 RUN_SIZE = int(meta_cfg["run_size"])
+CLIP_GRAD = int(meta_cfg["clip_grad_norm"])
 
 # labram-specific shaping knobs used by MetaEngine’s fetch path
 n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
@@ -189,7 +191,8 @@ engine = MetaEngine(
     model_str=model_str,
     experiment_name=experiment_name,
     device=DEVICE,
-    n_epochs=N_EPOCHS,
+    meta_iterations=META_ITERS,
+    validate_every= VALIDATE_EVERY,
     # datasets / splits
     train_ds=train_ds,
     val_ds=val_ds,
@@ -207,7 +210,6 @@ engine = MetaEngine(
     q_query=Q_QUERY,
     inner_steps=INNER_STEPS,
     inner_lr=INNER_LR,
-    steps_per_epoch=STEPS_PER_EP,
     run_size=RUN_SIZE,
     # perf
     use_amp=USE_AMP,
@@ -239,6 +241,7 @@ engine = MetaEngine(
     samples=patch_len,
     channels=channels,
     electrodes=electrodes,
+    clip_grad_norm=CLIP_GRAD
 )
 tester = TestEngine(
     engine,
