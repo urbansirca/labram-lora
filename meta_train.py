@@ -35,7 +35,6 @@ labram_hp = config.get("labram", {})
 
 # core exp
 SEED = int(exp_cfg.get("seed", 111))
-N_EPOCHS = int(exp_cfg["epochs"])
 META_ITERS = int(exp_cfg["meta_iterations"])
 VALIDATE_EVERY = int(exp_cfg["validate_every"])
 OPTIMIZER = exp_cfg["optimizer"]
@@ -229,12 +228,8 @@ engine = MetaEngine(
         "save_regular_checkpoints_interval", 10
     ),
     checkpoint_dir=(
-        Path(__file__).parent / "weights" / "checkpoints" / experiment_name
+        Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name
     ),
-    # early stopping (on meta-val)
-    early_stopping=exp_cfg.get("early_stopping", True),
-    early_stopping_patience=exp_cfg.get("early_stopping_patience", 10),
-    early_stopping_delta=exp_cfg.get("early_stopping_delta", 0.0),
     # RNG + shaping
     seed=SEED,
     n_patches_labram=n_patches_labram,

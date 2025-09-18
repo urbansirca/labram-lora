@@ -84,10 +84,6 @@ class MetaEngine:
         save_best_checkpoints: bool = True,  # used if you implement ES below
         save_regular_checkpoints_interval: int = 10,
         checkpoint_dir: Optional[Union[str, Path]] = None,
-        # --- early stopping on meta-val (optional; mirrors Engine) ---
-        early_stopping: bool = False,
-        early_stopping_patience: int = 10,
-        early_stopping_delta: float = 0.0,
         # --- RNG ---
         seed: int = 111,
         # --- Labram ---
@@ -172,7 +168,7 @@ class MetaEngine:
             Path(checkpoint_dir)
             if checkpoint_dir
             else (
-                Path(__file__).parent / "weights" / "checkpoints" / self.experiment_name
+                Path(__file__).parent / "weights" / "checkpoints_meta" / self.experiment_name
             )
         )
         self.checkpoint_root.mkdir(parents=True, exist_ok=True)
@@ -181,15 +177,6 @@ class MetaEngine:
         if self.config_for_logging is not None:
             with open(self.checkpoint_root / "config.json", "w") as f:
                 json.dump(self.config_for_logging, f, indent=2)
-
-        # ES (on meta-val loss)
-        self.early_stopping = early_stopping
-        self.early_stopping_patience = int(early_stopping_patience)
-        self.early_stopping_delta = float(early_stopping_delta)
-        self.best_val_loss = float("inf")
-        self.best_val_acc = 0.0
-        self.best_val_epoch = 0
-        self.patience_counter = 0
 
         # misc
         self.metrics = Metrics()
@@ -314,7 +301,7 @@ class MetaEngine:
     def save_regular_checkpoint(self):
         if (
             self.save_regular_checkpoints
-            and self.metrics.epoch % self.save_regular_checkpoints_interval == 0
+            and (self.metrics.iteration % self.save_regular_checkpoints_interval == 0) 
         ):
             metric_val = (
                 self.metrics.val_accuracy
@@ -322,7 +309,7 @@ class MetaEngine:
                 else self.metrics.train_accuracy
             )
             metric_str = f"{metric_val:.3f}" if metric_val is not None else "NA"
-            name = f"checkpoint_e{self.metrics.epoch}_acc{metric_str}"
+            name = f"checkpoint_i{self.metrics.iteration}_acc{metric_str}"
             self.checkpoint(name=name)
 
     def meta_step(self, subjects_batch: List[int]):
@@ -419,9 +406,7 @@ class MetaEngine:
         self.model.eval()
         rng = self.rng
 
-        # total_loss = 0.0
         total_losses = []
-        # total_correct = 0
         total_corrects = []
         total_count = 0
 
@@ -459,7 +444,6 @@ class MetaEngine:
             fast = self._clone_as_leaf(base_params)  # leaves w/ requires_grad=True
             fast_dict = dict(zip(base_names, fast))
             for _ in range(self.inner_steps):
-                # fast_dict = {name: p for name, p in zip(base_names, fast)}
                 for name, param in zip(base_names, fast):
                     fast_dict[name] = param
                 # enable grad just for inner step
@@ -476,23 +460,19 @@ class MetaEngine:
                 fast = self._sgd_update_detached(fast, grads, self.inner_lr)
 
             # ----- query evaluation with adapted params (no grad needed) -----
-            # fast_dict = {name: p for name, p in zip(base_names, fast)}
             for name, param in zip(base_names, fast):
                 fast_dict[name] = param
             with torch.no_grad():
                 logits_q = self._forward_with(fast_dict, Xq)
                 Lq = torch.nn.functional.cross_entropy(logits_q, yq)
-                # total_loss += float(Lq)
                 total_losses.append(Lq)
-                # total_correct += (logits_q.argmax(1) == yq).sum().item()
                 total_corrects.append((logits_q.argmax(1) == yq).sum())
                 total_count += yq.numel()
 
         total_correct = torch.stack(total_corrects).sum().item()
-        total_count = torch.tensor(total_count, device=self.device)
 
         self.metrics.val_loss = torch.stack(total_losses).mean().cpu().item()
-        self.metrics.val_accuracy = total_correct / max(1, total_count)
+        self.metrics.val_accuracy = float(total_correct) / max(1, int(total_count))
 
     def train(self):
         for i in range(1, self.meta_iterations + 1):
@@ -507,3 +487,8 @@ class MetaEngine:
             if self.validate_every > 0 and (i % self.validate_every) == 0:
                 self.meta_validate_epoch()
                 self.log_metrics()
+                self.save_regular_checkpoint()
+
+        if self.save_final_checkpoint:
+            name = f"final_checkpoint_i{self.metrics.iteration}_acc{self.metrics.val_accuracy:.3f}"
+            self.checkpoint(name=name)
