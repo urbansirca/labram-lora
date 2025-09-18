@@ -91,6 +91,7 @@ class MetaEngine:
         channels: int = 62,
         electrodes: List[str] = None,
         clip_grad_norm = None,
+        q_eval = None,
     ):
         # device / model
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -112,6 +113,7 @@ class MetaEngine:
         self.T = int(meta_batch_size)
         self.K = int(k_support)
         self.Q = q_query
+        self.Q_eval = q_eval or q_query
         self.inner_steps = int(inner_steps)
         self.inner_lr = float(inner_lr)
         self.validate_every = int(validate_every)
@@ -419,7 +421,7 @@ class MetaEngine:
 
         for sid in self.S_val:
             sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
-            que_idx = sample_query(sid, que_runs, self.val_epi, self.Q, rng)
+            que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
 
             Xs, ys = fetch_by_indices(
                 self.val_ds,

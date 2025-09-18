@@ -161,6 +161,7 @@ def make_scheduler(opt: torch.optim.Optimizer):
 META_BATCH = int(meta_cfg["meta_batch_size"])
 K_SUPPORT = int(meta_cfg["k_support"])
 Q_QUERY = meta_cfg.get("q_query")  # can be None
+Q_EVAL = meta_cfg.get("q_eval", None)
 INNER_STEPS = int(meta_cfg["inner_steps"])
 INNER_LR = float(meta_cfg["inner_lr"])
 RUN_SIZE = int(meta_cfg["run_size"])
@@ -235,7 +236,8 @@ engine = MetaEngine(
     samples=patch_len,
     channels=channels,
     electrodes=electrodes,
-    clip_grad_norm=CLIP_GRAD
+    clip_grad_norm=CLIP_GRAD,
+    q_eval=Q_EVAL,
 )
 tester = TestEngine(
     engine,
