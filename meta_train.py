@@ -210,7 +210,8 @@ Q_EVAL = meta_cfg.get("q_eval", None)
 INNER_STEPS = int(meta_cfg["inner_steps"])
 INNER_LR = float(meta_cfg["inner_lr"])
 RUN_SIZE = int(meta_cfg["run_size"])
-CLIP_GRAD = float(meta_cfg["clip_grad_norm"])
+val = meta_cfg.get("clip_grad_norm", None)
+CLIP_GRAD = float(val) if val is not None else None
 VAL_EPISODES_PER_SUBJECT = int(meta_cfg["val_episodes_per_subject"])
 
 # labram-specific shaping knobs used by MetaEngine’s fetch path
