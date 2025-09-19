@@ -90,8 +90,9 @@ class MetaEngine:
         samples: int = 200,
         channels: int = 62,
         electrodes: List[str] = None,
-        clip_grad_norm = None,
-        q_eval = None,
+        clip_grad_norm: float = None,
+        q_eval: int = None,
+        val_episodes_per_subject: int = None,
     ):
         # device / model
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -198,7 +199,7 @@ class MetaEngine:
         self.optimizer = optimizer_factory(allow_params)
         self.scheduler = scheduler_factory(self.optimizer)
 
-        self.val_episodes_per_subject = 0
+        self.val_episodes_per_subject = val_episodes_per_subject
 
     def _expected_trainable_names(self):
         names = []
