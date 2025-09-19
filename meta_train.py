@@ -211,6 +211,7 @@ INNER_STEPS = int(meta_cfg["inner_steps"])
 INNER_LR = float(meta_cfg["inner_lr"])
 RUN_SIZE = int(meta_cfg["run_size"])
 CLIP_GRAD = float(meta_cfg["clip_grad_norm"])
+VAL_EPISODES_PER_SUBJECT = int(meta_cfg["val_episodes_per_subject"])
 
 # labram-specific shaping knobs used by MetaEngine’s fetch path
 n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
@@ -283,6 +284,7 @@ engine = MetaEngine(
     electrodes=electrodes,
     clip_grad_norm=CLIP_GRAD,
     q_eval=Q_EVAL,
+    val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
 )
 tester = TestEngine(
     engine,

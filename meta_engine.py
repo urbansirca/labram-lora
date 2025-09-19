@@ -198,6 +198,8 @@ class MetaEngine:
         self.optimizer = optimizer_factory(allow_params)
         self.scheduler = scheduler_factory(self.optimizer)
 
+        self.val_episodes_per_subject = 0
+
     def _expected_trainable_names(self):
         names = []
         for n, p in self.model.named_parameters():
@@ -409,6 +411,8 @@ class MetaEngine:
         self.model.eval()
         rng = self.rng
 
+        E = int(getattr(self, "val_episodes_per_subject", 0))
+
         total_losses = []
         total_corrects = []
         total_count = 0
@@ -423,54 +427,55 @@ class MetaEngine:
         base_params = [p for _, p in base_named]
 
         for sid in self.S_val:
-            sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
-            que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
+            for _ in range(max(1, E)):
+                sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
+                que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
 
-            Xs, ys = fetch_by_indices(
-                self.val_ds,
-                self.val_epi,
-                sid,
-                sup_idx,
-                self.device,
-                self.non_blocking,
-            )
-            Xq, yq = fetch_by_indices(
-                self.val_ds,
-                self.val_epi,
-                sid,
-                que_idx,
-                self.device,
-                self.non_blocking,
-            )
+                Xs, ys = fetch_by_indices(
+                    self.val_ds,
+                    self.val_epi,
+                    sid,
+                    sup_idx,
+                    self.device,
+                    self.non_blocking,
+                )
+                Xq, yq = fetch_by_indices(
+                    self.val_ds,
+                    self.val_epi,
+                    sid,
+                    que_idx,
+                    self.device,
+                    self.non_blocking,
+                )
 
-            # ----- inner adaptation on cloned leafs (requires grad) -----
-            fast = self._clone_as_leaf(base_params)  # leaves w/ requires_grad=True
-            fast_dict = dict(zip(base_names, fast))
-            for _ in range(self.inner_steps):
+                # ----- inner adaptation on cloned leafs (requires grad) -----
+                fast = self._clone_as_leaf(base_params)  # leaves w/ requires_grad=True
+                fast_dict = dict(zip(base_names, fast))
+                for _ in range(self.inner_steps):
+                    for name, param in zip(base_names, fast):
+                        fast_dict[name] = param
+                    # enable grad just for inner step
+                    with torch.enable_grad():
+                        logits_s = self._forward_with(fast_dict, Xs)
+                        Ls = torch.nn.functional.cross_entropy(logits_s, ys)
+                        grads = torch.autograd.grad(
+                            Ls,
+                            fast,
+                            create_graph=False,
+                            retain_graph=False,
+                            allow_unused=True,
+                        )
+                    fast = self._sgd_update_detached(fast, grads, self.inner_lr)
+
+                # ----- query evaluation with adapted params (no grad needed) -----
                 for name, param in zip(base_names, fast):
                     fast_dict[name] = param
-                # enable grad just for inner step
-                with torch.enable_grad():
-                    logits_s = self._forward_with(fast_dict, Xs)
-                    Ls = torch.nn.functional.cross_entropy(logits_s, ys)
-                    grads = torch.autograd.grad(
-                        Ls,
-                        fast,
-                        create_graph=False,
-                        retain_graph=False,
-                        allow_unused=True,
-                    )
-                fast = self._sgd_update_detached(fast, grads, self.inner_lr)
-
-            # ----- query evaluation with adapted params (no grad needed) -----
-            for name, param in zip(base_names, fast):
-                fast_dict[name] = param
-            with torch.no_grad():
-                logits_q = self._forward_with(fast_dict, Xq)
-                Lq = torch.nn.functional.cross_entropy(logits_q, yq)
-                total_losses.append(Lq)
-                total_corrects.append((logits_q.argmax(1) == yq).sum())
-                total_count += yq.numel()
+                with torch.no_grad():
+                    logits_q = self._forward_with(fast_dict, Xq)
+                    Lq = torch.nn.functional.cross_entropy(logits_q, yq)
+                    total_losses.append(Lq)
+                    total_corrects.append((logits_q.argmax(1) == yq).sum())
+                    total_count += yq.numel()
 
         total_correct = torch.stack(total_corrects).sum().item()
 
