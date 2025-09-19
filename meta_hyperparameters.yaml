@@ -6,7 +6,7 @@ experiment:
   meta_iterations: 1500
   validate_every: 30
   optimizer: AdamW       # Adam | AdamW
-  scheduler: CosineAnnealingWarmRestarts   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
+  scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
   # logging / checkpoints / early stopping
   log_to_wandb: true
   wandb_entity: "urban-sirca-vrije-universiteit-amsterdam"
@@ -55,8 +55,11 @@ optimizations:
 # Model-specific blocks
 labram:
   lora: true
-  lr: 2e-4 
-  weight_decay: 1e-4
+  # lr: 2e-4 
+  # weight_decay: 1e-4
+  lora_lr: 2e-4          
+  head_lr: 5e-4          
+  head_weight_decay: 5e-4
   adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/checkpoint__e10_acc0.565"
 
 peft_config:

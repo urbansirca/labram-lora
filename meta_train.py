@@ -52,13 +52,13 @@ classes = int(data_cfg.get("num_classes", 2))
 # -------- model ------------
 model_name = exp_cfg["model"].lower()
 if model_name == "labram":
-    # model = load_labram(
-    #     lora=labram_hp.get("lora", True),
-    #     peft_config=peft_cfg,
-    # )
-    model = load_labram_with_adapter(
-        labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+    model = load_labram(
+        lora=labram_hp.get("lora", True),
+        peft_config=peft_cfg,
     )
+    # model = load_labram_with_adapter(
+    #     labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+    # )
 
     model_str = "labram"
 
@@ -132,24 +132,61 @@ lr = float((labram_hp or eegnet_hp).get("lr", 1e-3))
 wd = float((labram_hp or eegnet_hp).get("weight_decay", 0.0))
 
 
-def make_optimizer(params: Iterable[torch.nn.Parameter]):
-    opt = OPTIMIZER.lower()
-    if opt == "adamw":
-        return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
-    elif opt == "adam":
-        return torch.optim.Adam(list(params), lr=lr, weight_decay=wd)
-    else:
-        raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+if model_str == 'eegnet':
+    def make_optimizer(params: Iterable[torch.nn.Parameter]):
+        opt = OPTIMIZER.lower()
+        if opt == "adamw":
+            return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
+        elif opt == "adam":
+            return torch.optim.Adam(list(params), lr=lr, weight_decay=wd)
+        else:
+            raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+elif model_str == 'labram':
+    def make_optimizer(params: Iterable[torch.nn.Parameter]):
+        opt = OPTIMIZER.lower()
+
+        allowed_ids = {id(p) for p in params}
+        named = [(n, p) for n, p in model.named_parameters() if id(p) in allowed_ids]
+
+        head, lora_or_no_decay = [], []
+        for name, p in named:
+            if any(k in name.lower() for k in ("head", "classifier", "fc_out", "logits")):
+                head.append(p)
+            else:
+                # Any non-head trainable we expect to be LoRA;
+                lora_or_no_decay.append(p)
+
+        base = (labram_hp or eegnet_hp) or {}
+        head_lr = float(base.get("head_lr", base.get("lr", 1e-3)))
+        head_wd = float(base.get("head_weight_decay", base.get("weight_decay", 0.0)))
+        lora_lr = float(base.get("lora_lr", base.get("lr", 1e-3)))
+
+        groups = []
+        if head:
+            groups.append({"params": head, "lr": head_lr, "weight_decay": head_wd, "name": "head"})
+        if lora_or_no_decay:
+            groups.append({"params": lora_or_no_decay, "lr": lora_lr, "weight_decay": 0.0, "name": "lora_no_decay"})
+        
+        if opt == "adamw":
+            # pprint(groups)
+            return torch.optim.AdamW(groups)
+        elif opt == "adam":
+            return torch.optim.Adam(groups)
+        else:
+            raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+else:
+    raise ValueError(f"Unsupported model: {model_str}")
 
 
 def make_scheduler(opt: torch.optim.Optimizer):
     if SCHEDULER == "CosineAnnealingLR":
-        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS)
+        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min", 0)))
     elif SCHEDULER == "CosineAnnealingWarmRestarts":
         return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             opt,
-            T_0=max(1, META_ITERS // int(exp_cfg.get("T_0", 2))),
+            T_0=int(exp_cfg.get("T_0", 100)),
             T_mult=int(exp_cfg.get("T_mult", 2)),
+            eta_min=float(exp_cfg.get("eta_min", 1e-5)),
         )
     elif SCHEDULER in (None, "None"):
         return None
