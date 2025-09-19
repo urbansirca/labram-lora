@@ -193,6 +193,14 @@ def make_scheduler(opt: torch.optim.Optimizer):
     else:
         raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
 
+def make_optimizer_tester(params: Iterable[torch.nn.Parameter]):
+    opt = OPTIMIZER.lower()
+    if opt == "adamw":
+        return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
+    elif opt == "adam":
+        return torch.optim.Adam(list(params), lr=lr, weight_decay=wd)
+    else:
+        raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 
 # -------- episode knobs ---------------
 META_BATCH = int(meta_cfg["meta_batch_size"])
@@ -202,7 +210,7 @@ Q_EVAL = meta_cfg.get("q_eval", None)
 INNER_STEPS = int(meta_cfg["inner_steps"])
 INNER_LR = float(meta_cfg["inner_lr"])
 RUN_SIZE = int(meta_cfg["run_size"])
-CLIP_GRAD = int(meta_cfg["clip_grad_norm"])
+CLIP_GRAD = float(meta_cfg["clip_grad_norm"])
 
 # labram-specific shaping knobs used by MetaEngine’s fetch path
 n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
@@ -278,7 +286,7 @@ engine = MetaEngine(
 )
 tester = TestEngine(
     engine,
-    optimizer_factory=make_optimizer,
+    optimizer_factory=make_optimizer_tester,
     use_wandb=exp_cfg.get("log_to_wandb", False),
     wandb_prefix="test",
     experiment_name=experiment_name,

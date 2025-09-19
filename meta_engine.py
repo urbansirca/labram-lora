@@ -386,7 +386,10 @@ class MetaEngine:
             total_samples.append(torch.tensor(yq.numel(), device=self.device))
 
         if self.clip_grad_norm:
-            torch.nn.utils.clip_grad_norm_(base_params, max_norm=self.clip_grad_norm)
+            total_norm = torch.nn.utils.clip_grad_norm_(base_params, max_norm=self.clip_grad_norm)
+            self.metrics.grad_norm = float(total_norm)  
+        else:
+            self.metrics.grad_norm = self._grad_norm(base_params)
         self.optimizer.step()
 
         outer_correct = torch.stack(correct_preds).sum().item()
