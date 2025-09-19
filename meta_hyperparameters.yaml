@@ -3,10 +3,10 @@ experiment:
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  meta_iterations: 3000
-  validate_every: 60
+  meta_iterations: 1500
+  validate_every: 30
   optimizer: AdamW       # Adam | AdamW
-  scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
+  scheduler: CosineAnnealingWarmRestarts   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
   # logging / checkpoints / early stopping
   log_to_wandb: true
   wandb_entity: "urban-sirca-vrije-universiteit-amsterdam"
@@ -15,11 +15,12 @@ experiment:
 
   save_regular_checkpoints: true
   save_final_checkpoint: true
-  save_regular_checkpoints_interval: 300
+  save_regular_checkpoints_interval: 100
  
   # optional warm restarts extras
-  T_0: 2
+  T_0: 100 
   T_mult: 2
+  eta_min: 1e-5
 
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed.h5
@@ -41,7 +42,7 @@ meta:
   q_query: 10         # or null for “all remaining”
   q_eval: 30
   inner_steps: 2
-  inner_lr: 7e-5
+  inner_lr: 3e-5
   run_size: 100       # granularity for episode indexing
   clip_grad_norm: 3.5  # torch.nn.utils.clip_grad_norm_
 
@@ -56,7 +57,7 @@ labram:
   lora: true
   lr: 2e-4 
   weight_decay: 1e-4
-  adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e10_acc0.686"
+  adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/checkpoint__e10_acc0.565"
 
 peft_config:
   r: 2
