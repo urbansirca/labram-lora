@@ -16,6 +16,8 @@ from meta_helpers import (
     sample_support,
     sample_query,
     fetch_by_indices,
+    sample_support_no_run,
+    sample_query_no_run
 )
 
 logger = logging.getLogger(__name__)
@@ -334,8 +336,8 @@ class MetaEngine:
         total_samples = []
 
         for sid in subjects_batch:
-            sup_idx, que_runs = sample_support(sid, self.train_epi, self.K, self.rng)
-            que_idx = sample_query(sid, que_runs, self.train_epi, self.Q, self.rng)
+            sup_idx, que_runs = sample_support_no_run(sid, self.train_epi, self.K, self.rng)
+            que_idx = sample_query_no_run(sid, que_runs, self.train_epi, self.Q, self.rng)
             Xs, ys = fetch_by_indices(
                 self.train_ds,
                 self.train_epi,
@@ -429,8 +431,10 @@ class MetaEngine:
 
         for sid in self.S_val:
             for _ in range(max(1, E)):
-                sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
-                que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
+                # sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
+                # que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
+                sup_idx, que_runs = sample_support_no_run(sid, self.val_epi, self.K, self.rng)
+                que_idx = sample_query_no_run(sid, que_runs, self.val_epi, self.Q_eval, self.rng)  
 
                 Xs, ys = fetch_by_indices(
                     self.val_ds,

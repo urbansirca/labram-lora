@@ -23,6 +23,12 @@ class EpisodeIndex:
     subj_local_to_global: Dict[int, np.ndarray]  # sid -> global idxs
     drop_last: bool
 
+     # NEW: collapsed over runs → per-(subject, class) pools
+    by_subj_class: Dict[Tuple[int, int], np.ndarray]              # (sid, cls) -> local idxs
+    _class_pools: Dict[Tuple[int, int], np.ndarray]               # shuffled working pools
+    _class_cursors: Dict[Tuple[int, int], int]                    # cursor per (sid, cls)
+    _rng_per_subj: Dict[int, np.random.Generator]                 # deterministic RNG per subje
+
 
 def build_episode_index(
     ds, run_size: int = 100, y_key: str = "Y", x_key: str = "X", drop_last: bool = True
@@ -42,6 +48,12 @@ def build_episode_index(
     runs_for_subj = {}
     classes_for_subj = {}
     n_runs = {}
+
+    # NEW holders
+    by_subj_class = {}
+    _class_pools = {}
+    _class_cursors = {}
+    _rng_per_subj = {}
 
     for sid, gidxs in subj_local_to_global.items():
         grp = f[f"s{sid}"]
@@ -77,6 +89,28 @@ def build_episode_index(
                     mask = y_run == cls
                     by_subj_run_class[(sid, r, int(cls))] = local_run[mask]
 
+        # NEW: collapsed per-(subject, class) pools (across all runs)
+        for cls in classes_for_subj[sid]:
+            cls = int(cls)
+            # concat all run-specific arrays for this (sid, cls)
+            parts = [by_subj_run_class[(sid, r, cls)]
+                     for r in runs_for_subj[sid]
+                     if (sid, r, cls) in by_subj_run_class]
+            if len(parts) == 0:
+                by_subj_class[(sid, cls)] = np.empty((0,), dtype=np.int64)
+            else:
+                by_subj_class[(sid, cls)] = np.concatenate(parts, axis=0)
+
+        # Init deterministic per-subject RNG + shuffled working pools and cursors
+        _rng = np.random.default_rng(12345 + int(sid))
+        _rng_per_subj[sid] = _rng
+        for cls in classes_for_subj[sid]:
+            key = (sid, int(cls))
+            pool = by_subj_class[key].copy()
+            _rng.shuffle(pool)
+            _class_pools[key] = pool
+            _class_cursors[key] = 0
+
     return EpisodeIndex(
         by_subj_run=by_subj_run,
         by_subj_run_class=by_subj_run_class,
@@ -86,6 +120,10 @@ def build_episode_index(
         n_runs=n_runs,
         subj_local_to_global=subj_local_to_global,
         drop_last=drop_last,
+        by_subj_class=by_subj_class,
+        _class_pools=_class_pools,
+        _class_cursors=_class_cursors,
+        _rng_per_subj=_rng_per_subj,
     )
 
 
@@ -187,3 +225,56 @@ def fetch_by_indices(
     X = torch.stack(Xs, 0).to(device, non_blocking=non_blocking)
     y = torch.stack(ys, 0).to(device, non_blocking=non_blocking)
     return X, y
+
+
+
+def sample_support_no_run(sid: int, epi: EpisodeIndex, K_per_class: int, rng: random.Random):
+    """Return support indices balanced per class; ignore runs.
+    Signature-compatible: returns (support_local_idxs, dummy_runs)."""
+    sup = []
+    for c in epi.classes_for_subj[sid]:
+        take = _draw_from_subj_class(epi, sid, int(c), K_per_class)
+        sup.extend(take.tolist())
+    dummy_runs = []  # kept for call-site compatibility; not used
+    return sup, dummy_runs
+
+
+def sample_query_no_run(
+    sid: int,
+    _unused_query_runs: List[int],   # kept for signature compatibility
+    epi: EpisodeIndex,
+    Q_per_class: int,
+    rng: random.Random,
+):
+    """Return query indices balanced per class; ignores the runs argument."""
+    que = []
+    for c in epi.classes_for_subj[sid]:
+        take = _draw_from_subj_class(epi, sid, int(c), Q_per_class)
+        que.extend(take.tolist())
+    return que
+
+
+def _draw_from_subj_class(epi: EpisodeIndex, sid: int, cls: int, n: int) -> np.ndarray:
+    key = (sid, int(cls))
+    pool = epi._class_pools[key]
+    cur  = epi._class_cursors[key]
+    rng  = epi._rng_per_subj[sid]
+
+    if pool.size == 0:
+        raise ValueError(f"Subject {sid} has no samples for class {cls}.")
+
+    remain = pool.size - cur
+    if n <= remain:
+        out = pool[cur:cur+n]
+        epi._class_cursors[key] = cur + n
+        return out
+
+    # wrap: take tail, reshuffle whole pool, then take head
+    tail = pool[cur:]
+    rng.shuffle(pool)
+    epi._class_pools[key] = pool
+    epi._class_cursors[key] = 0
+    need = n - remain
+    head = pool[:need]
+    epi._class_cursors[key] = need
+    return np.concatenate([tail, head], axis=0)
