@@ -1,52 +1,5 @@
-# hyperparam_meta_config.yaml
-# Configuration file for hyperparameter optimization ranges
-# Leave values empty to use default ranges, or specify custom ranges
-
-# Labram model hyperparameters
-labram:
-  lr: [1e-5, 1e-3] # Learning rate range (e.g., [1e-5, 1e-2])
-  weight_decay: [0.0, 1e-2] # Weight decay range (e.g., [1e-5, 1e-2])
-
-# Meta-learning hyperparameters
-meta:
-  meta_batch_size: [50] # Meta batch size range (e.g., [2, 8])
-  k_support: [5] # Support samples per episode (e.g., [3, 10])
-  inner_steps: [1, 5, 10] # Inner loop steps (e.g., [1, 5])
-  inner_lr: [1e-5, 1e-2] # Inner loop learning rate (e.g., [1e-4, 1e-2])
-  steps_per_epoch: [1] # Steps per epoch (e.g., [2, 8])
-  q_query: [100, 300] # Query samples per episode (e.g., [50, 200])
-  run_size: [100] # Run size for episode indexing (e.g., [50, 200])
-
-# PEFT / LoRA tuning (only dropout exposed here)
-peft_config:
-  lora_dropout: [0.1, 0.25, 0.5] # e.g., [0.0, 0.6]
-
-# Training configuration
-experiment:
-  epochs: [20] # Number of epochs (e.g., [1, 3])
-  optimizer: ["AdamW"] # Optimizer choices (e.g., ["Adam", "AdamW"])
-  scheduler: ["CosineAnnealingLR"] # Scheduler choices (e.g., ["CosineAnnealingLR", "None"])
-
-# Checkpoint selectiond
-checkpoints:
-  available_paths: [
-    "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e20_acc0.816"
-  ]
-# Data configuration (optional overrides)
-data:
-  n_patches_labram: [4] # Number of patches for Labram (e.g., [2, 8])
-  patch_length: [200] # Patch length (e.g., [100, 300])
-  input_channels: 62 # Input channels (e.g., [32, 64])
-  num_classes: [2] # Number of classes (e.g., [2, 4])
-  path: data/preprocessed/KU_mi_labram_preprocessed.h5
-  # subjects: [1,2,3,4,5,6,7,8,9,10]   # optional; else n_subjects used
-  # leave_out: [8,9,10]                # test set subjects
-  m_leave_out: 2                  # optional multi-LOO size
-  train_proportion: 0.9
-
-# # Add to your optimization section:
 optimization:
-  use_pruning: true
+  use_pruning: false
   pruner_type: "median"
   n_startup_trials: 5
   n_warmup_steps: 2
