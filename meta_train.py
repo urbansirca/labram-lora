@@ -7,7 +7,7 @@ import yaml
 import torch
 
 from meta_engine import MetaEngine
-from models import EEGNet, load_labram, load_labram_with_adapter
+from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from preprocess_KU_data import get_ku_dataset_channels
 from test_engine import TestEngine
@@ -30,7 +30,7 @@ def get_meta_engine(config, with_tester = False):
     peft_cfg = config.get("peft_config", {})
     eegnet_hp = config.get("eegnet", {})
     labram_hp = config.get("labram", {})
-
+    deepconvnet_hp = config.get("deepconvnet", {})
     # core exp
     SEED = int(exp_cfg.get("seed", 111))
     META_ITERS = int(exp_cfg["meta_iterations"])
@@ -45,7 +45,7 @@ def get_meta_engine(config, with_tester = False):
     PIN_MEMORY = bool(opt_cfg.get("pin_memory", False))
 
     chans = int(data_cfg.get("input_channels", 62))
-    samples = int(data_cfg.get("samples", 1000))
+    samples = int(data_cfg.get("samples", 800))
     classes = int(data_cfg.get("num_classes", 2))
     # -------- model ------------
     model_name = exp_cfg["model"].lower()
@@ -72,6 +72,15 @@ def get_meta_engine(config, with_tester = False):
             F2=eegnet_hp.get("F2", eegnet_hp.get("F1", 8) * eegnet_hp.get("D", 2)),
         )
         model_str = "eegnet"
+
+    elif model_name == "deepconvnet":
+        model = DeepConvNet(
+            in_chans=chans,
+            n_classes=classes,
+            input_time_length=samples,
+            final_conv_length="auto",
+        )
+        model_str = "deepconvnet"
     else:
         raise ValueError("experiment.model must be one of: labram, eegnet")
 
@@ -126,11 +135,19 @@ def get_meta_engine(config, with_tester = False):
     test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
 
     # -------- optim/sched factories ----
-    lr = float((labram_hp or eegnet_hp).get("lr", 1e-3))
-    wd = float((labram_hp or eegnet_hp).get("weight_decay", 0.0))
+    if model_str == 'deepconvnet':
+        lr = float(deepconvnet_hp.get("lr", 1e-3))
+        wd = float(deepconvnet_hp.get("weight_decay", 0.0))
+    elif model_str == 'labram':
+        lr = float(labram_hp.get("lr", 1e-3))
+        wd = float(labram_hp.get("weight_decay", 0.0))
+    elif model_str == 'eegnet':
+        lr = float(eegnet_hp.get("lr", 1e-3))
+        wd = float(eegnet_hp.get("weight_decay", 0.0))
+    else:
+        raise ValueError(f"Unsupported model: {model_str}")
 
-
-    if model_str == 'eegnet':
+    if model_str in ['eegnet', 'deepconvnet']:
         def make_optimizer(params: Iterable[torch.nn.Parameter]):
             opt = OPTIMIZER.lower()
             if opt == "adamw":

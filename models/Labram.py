@@ -11,6 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 def load_labram(lora=True, peft_config=None):
     # Load checkpoint first
     MODEL_PATH = (
@@ -91,7 +92,6 @@ def load_labram(lora=True, peft_config=None):
     return model
 
 
-
 def load_labram_with_adapter(adapter_dir: str, device="cpu"):
     # 1) Build your base LaBraM *without* LoRA first (same code you used pre-PEFT)
     base_model = load_labram(lora=False)  # your function above, but with lora=False
@@ -102,8 +102,10 @@ def load_labram_with_adapter(adapter_dir: str, device="cpu"):
         def __init__(self, **kwargs):
             for k, v in kwargs.items():
                 setattr(self, k, v)
+
         def get(self, k, default=None):
             return getattr(self, k, default)
+
         def to_dict(self):
             return self.__dict__.copy()
 
@@ -116,12 +118,14 @@ def load_labram_with_adapter(adapter_dir: str, device="cpu"):
     # 3) Load the adapter (the folder that has adapter_config.json + adapter_model.safetensors)
     adapter_dir = Path(adapter_dir)
     assert (adapter_dir / "adapter_config.json").exists()
-    assert (adapter_dir / "adapter_model.safetensors").exists()  # note: file is "adapter_model", not "adapter_mode"
+    assert (
+        adapter_dir / "adapter_model.safetensors"
+    ).exists()  # note: file is "adapter_model", not "adapter_mode"
 
     model = PeftModel.from_pretrained(
         base_model,
         adapter_dir.as_posix(),
-        is_trainable=True,      # set True if you want to keep fine-tuning
+        is_trainable=True,  # set True if you want to keep fine-tuning
         adapter_name="default",  # or whatever you used when saving
     )
 
@@ -135,6 +139,7 @@ if __name__ == "__main__":
 
     print(f"Hyperparameters: {hyperparameters}")
     model = load_labram(
-        lora=hyperparameters["labram"]["lora"],
-        peft_config=hyperparameters["peft_config"],
+        lora=False,  # hyperparameters["labram"]["lora"],
+        # peft_config=hyperparameters["peft_config"],
     )
+    print(f"Model: {model}")
