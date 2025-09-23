@@ -1,7 +1,7 @@
 
 
 experiment:
-  model: "labram"
+  model: "deepconvnet"
   seed: 111
   dataset: "KU"
   optimizer: "AdamW"

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 
-def get_meta_engine(config, with_tester = False):
+def get_meta_engine(config, with_tester = False, experiment_name = None, model= None, model_str= None, model_hyperparameters = None):
     exp_cfg = config.get("experiment", {})
     data_cfg = config.get("data", {})
     meta_cfg = config.get("meta", {})
@@ -47,53 +47,57 @@ def get_meta_engine(config, with_tester = False):
     chans = int(data_cfg.get("input_channels", 62))
     samples = int(data_cfg.get("samples", 800))
     classes = int(data_cfg.get("num_classes", 2))
-    # -------- model ------------
-    model_name = exp_cfg["model"].lower()
-    if model_name == "labram":
-        model = load_labram(
-            lora=labram_hp.get("lora", True),
-            peft_config=peft_cfg,
-        )
-        # model = load_labram_with_adapter(
-        #     labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
-        # )
+    if model is None:
+        # -------- model ------------
+        model_name = exp_cfg["model"].lower()
+        if model_name == "labram":
+            model = load_labram(
+                lora=labram_hp.get("lora", True),
+                peft_config=peft_cfg,
+            )
+            # model = load_labram_with_adapter(
+            #     labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+            # )
 
-        model_str = "labram"
+            model_str = "labram"
 
-    elif model_name == "eegnet":
-        model = EEGNet(
-            nb_classes=classes,
-            Chans=chans,
-            Samples=samples,
-            dropoutRate=eegnet_hp.get("dropoutRate", 0.5),
-            kernLength=eegnet_hp.get("kernLength", 64),
-            F1=eegnet_hp.get("F1", 8),
-            D=eegnet_hp.get("D", 2),
-            F2=eegnet_hp.get("F2", eegnet_hp.get("F1", 8) * eegnet_hp.get("D", 2)),
-        )
-        model_str = "eegnet"
+        elif model_name == "eegnet":
+            model = EEGNet(
+                nb_classes=classes,
+                Chans=chans,
+                Samples=samples,
+                dropoutRate=eegnet_hp.get("dropoutRate", 0.5),
+                kernLength=eegnet_hp.get("kernLength", 64),
+                F1=eegnet_hp.get("F1", 8),
+                D=eegnet_hp.get("D", 2),
+                F2=eegnet_hp.get("F2", eegnet_hp.get("F1", 8) * eegnet_hp.get("D", 2)),
+            )
+            model_str = "eegnet"
 
-    elif model_name == "deepconvnet":
-        model = DeepConvNet(
-            in_chans=chans,
-            n_classes=classes,
-            input_time_length=samples,
-            final_conv_length="auto",
-        )
-        model_str = "deepconvnet"
+        elif model_name == "deepconvnet":
+            model = DeepConvNet(
+                in_chans=chans,
+                n_classes=classes,
+                input_time_length=samples,
+                final_conv_length="auto",
+            )
+            model_str = "deepconvnet"
+        else:
+            raise ValueError("experiment.model must be one of: labram, eegnet")
     else:
-        raise ValueError("experiment.model must be one of: labram, eegnet")
-
+        model = model
+        model_str = model_str
+        hyperparameters = model_hyperparameters
+        logger.info(f"USING PROVIDED MODEL: {model_str}")
     # name like train.py
-    name_list = [
-        f"{exp_cfg['model']}",
-        f"lr{(labram_hp or eegnet_hp).get('lr', 1e-3)}",
-        f"wd{(labram_hp or eegnet_hp).get('weight_decay', 0.0)}",
-        OPTIMIZER,
-        SCHEDULER,
-        datetime.now().strftime("%H%M%S"),
-    ]
-    experiment_name = "_".join(map(str, name_list))
+    if experiment_name is None: # for combined training we want same experiment name
+        name_list = [
+            model_str,
+            OPTIMIZER,
+            SCHEDULER,
+            datetime.now().strftime("%H%M%S"),
+        ]
+        experiment_name = "_".join(map(str, name_list))
     logger.info(f"Experiment name: {experiment_name}")
 
     # -------- device & seeds ---
