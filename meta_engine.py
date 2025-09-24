@@ -17,8 +17,11 @@ from meta_helpers import (
     sample_query,
     fetch_by_indices,
     sample_support_no_run,
-    sample_query_no_run
+    sample_query_no_run,
 )
+
+from torch.utils.data import DataLoader
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,12 @@ class Metrics:
     # optimizer/scheduler
     scheduler_lr: Optional[float] = None
     grad_norm: Optional[float] = None
+
+    train_loss_supervised: Optional[float] = None
+    train_accuracy_supervised: Optional[float] = None
+    val_loss_supervised: Optional[float] = None
+    val_accuracy_supervised: Optional[float] = None
+    scheduler_lr_supervised: Optional[float] = None
 
 
 class MetaEngine:
@@ -95,6 +104,20 @@ class MetaEngine:
         clip_grad_norm: float = None,
         q_eval: int = None,
         val_episodes_per_subject: int = None,
+        n_epochs_supervised: int = 100,
+        meta_iters_per_meta_epoch: int = 100,
+        validate_meta_every: int = 0,
+        supervised_train_batch_size: int = 250,
+        supervised_eval_batch_size: int = 250,
+        # --- extra (supervised) factories; default to the meta factories ---
+        supervised_optimizer_factory: Optional[
+            Callable[[nn.Module], torch.optim.Optimizer]
+        ] = None,
+        supervised_scheduler_factory: Optional[
+            Callable[
+                [torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]
+            ]
+        ] = None,
     ):
         # device / model
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -171,7 +194,10 @@ class MetaEngine:
             Path(checkpoint_dir)
             if checkpoint_dir
             else (
-                Path(__file__).parent / "weights" / "checkpoints_meta" / self.experiment_name
+                Path(__file__).parent
+                / "weights"
+                / "checkpoints_meta"
+                / self.experiment_name
             )
         )
         self.checkpoint_root.mkdir(parents=True, exist_ok=True)
@@ -186,6 +212,7 @@ class MetaEngine:
         self._t0 = time.time()
         self._printed_header = False
         self.rng = random.Random(int(seed))
+        self.seed = seed
 
         self.base_param_shapes = [p.shape for p in self.model.parameters()]
 
@@ -202,6 +229,29 @@ class MetaEngine:
         self.scheduler = scheduler_factory(self.optimizer)
 
         self.val_episodes_per_subject = val_episodes_per_subject
+
+        # -------- supervised (normal) optimizer/scheduler --------
+        self.sup_optimizer_factory = (
+            supervised_optimizer_factory  # or optimizer_factory
+        )
+        self.sup_scheduler_factory = (
+            supervised_scheduler_factory  # or scheduler_factory
+        )
+
+        # we’ll train the same allowed params by default; override policy here if needed
+        sup_params = [
+            p for n, p in self.model.named_parameters() if n in self._allow_trainable
+        ]
+        self.sup_optimizer = self.sup_optimizer_factory(sup_params)
+        self.sup_scheduler = self.sup_scheduler_factory(self.sup_optimizer)
+
+        self.n_epochs_supervised = n_epochs_supervised
+        self.meta_iters_per_meta_epoch = meta_iters_per_meta_epoch
+        self.supervised_train_batch_size = supervised_train_batch_size
+        self.supervised_eval_batch_size = supervised_eval_batch_size
+
+        self.sup_optimizer = self.sup_optimizer_factory(sup_params)
+        self.sup_scheduler = self.sup_scheduler_factory(self.sup_optimizer)
 
     def _expected_trainable_names(self):
         names = []
@@ -304,9 +354,8 @@ class MetaEngine:
             json.dump(metadata, f, indent=2)
 
     def save_regular_checkpoint(self):
-        if (
-            self.save_regular_checkpoints
-            and (self.metrics.iteration % self.save_regular_checkpoints_interval == 0) 
+        if self.save_regular_checkpoints and (
+            self.metrics.iteration % self.save_regular_checkpoints_interval == 0
         ):
             metric_val = (
                 self.metrics.val_accuracy
@@ -336,8 +385,12 @@ class MetaEngine:
         total_samples = []
 
         for sid in subjects_batch:
-            sup_idx, que_runs = sample_support_no_run(sid, self.train_epi, self.K, self.rng)
-            que_idx = sample_query_no_run(sid, que_runs, self.train_epi, self.Q, self.rng)
+            sup_idx, que_runs = sample_support_no_run(
+                sid, self.train_epi, self.K, self.rng
+            )
+            que_idx = sample_query_no_run(
+                sid, que_runs, self.train_epi, self.Q, self.rng
+            )
             Xs, ys = fetch_by_indices(
                 self.train_ds,
                 self.train_epi,
@@ -391,8 +444,10 @@ class MetaEngine:
             total_samples.append(torch.tensor(yq.numel(), device=self.device))
 
         if self.clip_grad_norm:
-            total_norm = torch.nn.utils.clip_grad_norm_(base_params, max_norm=self.clip_grad_norm)
-            self.metrics.grad_norm = float(total_norm)  
+            total_norm = torch.nn.utils.clip_grad_norm_(
+                base_params, max_norm=self.clip_grad_norm
+            )
+            self.metrics.grad_norm = float(total_norm)
         else:
             self.metrics.grad_norm = self._grad_norm(base_params)
         self.optimizer.step()
@@ -433,8 +488,12 @@ class MetaEngine:
             for _ in range(max(1, E)):
                 # sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
                 # que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
-                sup_idx, que_runs = sample_support_no_run(sid, self.val_epi, self.K, self.rng)
-                que_idx = sample_query_no_run(sid, que_runs, self.val_epi, self.Q_eval, self.rng)  
+                sup_idx, que_runs = sample_support_no_run(
+                    sid, self.val_epi, self.K, self.rng
+                )
+                que_idx = sample_query_no_run(
+                    sid, que_runs, self.val_epi, self.Q_eval, self.rng
+                )
 
                 Xs, ys = fetch_by_indices(
                     self.val_ds,
@@ -506,3 +565,197 @@ class MetaEngine:
             name = f"final_checkpoint_i{self.metrics.iteration}_acc{self.metrics.val_accuracy:.3f}"
             self.checkpoint(name=name)
 
+    def supervised_train_epoch(self, dataloader=None) -> None:
+        """Standard supervised epoch using self.sup_optimizer / self.sup_scheduler."""
+        if dataloader is None:
+            if self.sup_train_loader is None:
+                raise ValueError(
+                    "No train dataloader provided. Call setup_supervised_dataloaders(...) first or pass a dataloader."
+                )
+            dataloader = self.sup_train_loader
+
+        self.model.train()
+        device = self.device
+        total_loss = torch.tensor(0.0, device=device)
+        total_correct = torch.tensor(0, device=device)
+        total_count = torch.tensor(0, device=device)
+
+        for X, Y, *_ in dataloader:
+            X = X.to(device, non_blocking=self.non_blocking)
+            Y = Y.long().to(device, non_blocking=self.non_blocking)
+
+            self.sup_optimizer.zero_grad(set_to_none=True)
+
+            if self.use_amp:
+                with torch.autocast(device_type=device.type):
+                    logits = self._forward(X)
+                    loss = self.loss_fn(logits, Y)
+            else:
+                logits = self._forward(X)
+                loss = self.loss_fn(logits, Y)
+
+            loss.backward()
+
+            if self.clip_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    (p for p in self.model.parameters() if p.requires_grad),
+                    max_norm=self.clip_grad_norm,
+                )
+
+            self.sup_optimizer.step()
+
+            bsz = Y.size(0)
+            total_loss += loss * bsz
+            total_correct += (logits.argmax(1) == Y).sum()
+            total_count += bsz
+
+        self.metrics.train_loss_supervised = (total_loss / max(1, total_count)).item()
+        self.metrics.train_accuracy_supervised = (
+            total_correct / max(1, total_count)
+        ).item()
+        self.metrics.scheduler_lr_supervised = float(
+            self.sup_optimizer.param_groups[0]["lr"]
+        )
+
+        if self.sup_scheduler is not None:
+            self.sup_scheduler.step()
+
+    @torch.no_grad()
+    def supervised_validate_epoch(self, dataloader=None) -> None:
+        """Standard supervised validation (no adaptation)."""
+        if dataloader is None:
+            if self.sup_val_loader is None:
+                raise ValueError(
+                    "No val dataloader provided. Call setup_supervised_dataloaders(...) first or pass a dataloader."
+                )
+            dataloader = self.sup_val_loader
+
+        self.model.eval()
+        device = self.device
+        total_loss = torch.tensor(0.0, device=device)
+        total_correct = torch.tensor(0, device=device)
+        total_count = torch.tensor(0, device=device)
+
+        for X, Y, *_ in dataloader:
+            X = X.to(device, non_blocking=self.non_blocking)
+            Y = Y.long().to(device, non_blocking=self.non_blocking)
+
+            if self.use_amp:
+                with torch.autocast(device_type=device.type):
+                    logits = self._forward(X)
+                    loss = self.loss_fn(logits, Y)
+            else:
+                logits = self._forward(X)
+                loss = self.loss_fn(logits, Y)
+
+            bsz = Y.size(0)
+            total_loss += loss * bsz
+            total_correct += (logits.argmax(1) == Y).sum()
+            total_count += bsz
+
+        self.metrics.val_loss_supervised = (total_loss / max(1, total_count)).item()
+        self.metrics.val_accuracy_supervised = (
+            total_correct / max(1, total_count)
+        ).item()
+
+    def setup_supervised_dataloaders(self) -> None:
+        """
+        Create standard PyTorch DataLoaders from the meta engine's datasets for
+        plain supervised training/validation/testing.
+        """
+        g = torch.Generator().manual_seed(
+            self.seed if self.seed is not None else int(self.rng.random() * 1e9)
+        )
+        eval_bs = self.supervised_eval_batch_size or self.supervised_train_batch_size
+
+        num_workers = 0
+        persistent_workers = False
+
+        self.sup_train_loader = DataLoader(
+            self.train_ds,
+            batch_size=self.supervised_train_batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=self.pin_memory,
+            drop_last=False,
+            generator=g,
+            persistent_workers=persistent_workers,
+        )
+        self.sup_val_loader = DataLoader(
+            self.val_ds,
+            batch_size=eval_bs,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=self.pin_memory,
+            drop_last=False,
+            persistent_workers=persistent_workers,
+        )
+
+    def train_alternating(
+        self,
+    ) -> None:
+        """
+        Alternates: [1 supervised epoch] -> [N meta-iterations], for total_epochs cycles.
+
+        Preconditions:
+        - Call setup_supervised_dataloaders(...) once, or pass loaders into
+            supervised_* methods yourself.
+
+        Args:
+        total_epochs: number of cycles (each cycle = 1 supervised epoch + meta block)
+        meta_iters_per_meta_epoch: meta iterations per cycle
+        validate_meta_every: 0 = only validate at end of meta block; K = every K iters
+        checkpoint_supervised: if True, also checkpoint right after supervised val
+        """
+
+        self.setup_supervised_dataloaders()
+        # keep a running meta-iteration index so save_regular_checkpoint() still works
+        iter_idx = int(getattr(self.metrics, "iteration", 0) or 0)
+
+        for epoch in range(1, int(self.n_epochs_supervised) + 1):
+            self.metrics.epoch = epoch
+
+            # -------- 1) supervised epoch (normal loss) --------
+            self.supervised_train_epoch()  # uses self.sup_train_loader
+            self.supervised_validate_epoch()  # uses self.sup_val_loader
+            # self.log_metrics()
+
+            # if self.checkpoint_supervised:
+            #     metric = self.metrics.val_accuracy_supervised if self.metrics.val_accuracy_supervised is not None else self.metrics.train_accuracy_supervised
+            #     metric_str = f"{metric:.3f}" if metric is not None else "NA"
+            #     self.checkpoint(name=f"checkpoint_SUP_e{epoch}_acc{metric_str}")
+
+            # -------- 2) meta block (N iterations) -------------
+            for j in range(1, int(self.meta_iters_per_meta_epoch) + 1):
+                iter_idx += 1
+                self.metrics.iteration = iter_idx
+
+                T = min(self.T, len(self.S_train))
+                subjects_batch = self.rng.sample(self.S_train, k=T)
+                self.meta_step(subjects_batch)
+
+                if self.scheduler is not None:
+                    self.scheduler.step()
+
+                # # optional intra-block meta validation/logging/checkpointing
+                # if self.validate_meta_every > 0 and (j % self.validate_meta_every == 0):
+                #     self.meta_validate_epoch()
+                #     self.log_metrics()
+                #     self.save_regular_checkpoint()
+
+            # end-of-block meta validation if user asked for "only at meta epoch end"
+            self.meta_validate_epoch()
+            self.log_metrics()
+            self.save_regular_checkpoint()
+
+        # final checkpoint naming mirrors your meta `train()`
+        if self.save_final_checkpoint:
+            acc = (
+                self.metrics.val_accuracy
+                if self.metrics.val_accuracy is not None
+                else self.metrics.train_accuracy
+            )
+            acc_str = f"{acc:.3f}" if acc is not None else "NA"
+            self.checkpoint(
+                name=f"final_checkpoint_i{self.metrics.iteration}_acc{acc_str}"
+            )

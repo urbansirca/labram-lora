@@ -25,7 +25,7 @@ experiment:
 
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed.h5
-  # subjects: [1,2,3,4,5,6,7,8,9,10]   # optional; else n_subjects used
+  subjects: [1,2,3,4,5,6,7,8,9,10]   # optional; else n_subjects used
   leave_out: [1,2,3,4,5,6]                # test set subjects
   # m_leave_out: 2                  # optional multi-LOO size
   train_proportion: 0.9
@@ -48,6 +48,17 @@ meta:
   clip_grad_norm: 3.5  # torch.nn.utils.clip_grad_norm_
   val_episodes_per_subject: 1
 
+supervised:
+  train_batch_size: 250
+  eval_batch_size: 250
+  n_epochs_supervised: 100
+  meta_iters_per_meta_epoch: 10
+  validate_meta_every: 0
+
+
+
+  drop_last: false
+
 optimizations:
   use_amp: false
   use_compile: false
@@ -63,6 +74,8 @@ labram:
   head_lr: 5e-4          
   head_weight_decay: 5e-4
   adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/checkpoint__e10_acc0.565"
+  sup_lr: 0.001
+  sup_wd: 0.0
 
 peft_config:
   r: 2
@@ -78,11 +91,14 @@ eegnet:
   F1: 8
   D: 2
   F2: 16
-
+  sup_lr: 0.001
+  sup_wd: 0.0
 deepconvnet:
   lr: 0.001
   weight_decay: 0.0
-
+  sup_lr: 0.001
+  sup_wd: 0.0
+  
 test:
   shots_list: [0, 1, 2, 3, 4, 5, 10, 25, 50]
   n_epochs: 10

@@ -37,6 +37,9 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     VALIDATE_EVERY = int(exp_cfg["validate_every"])
     OPTIMIZER = exp_cfg["optimizer"]
     SCHEDULER = exp_cfg["scheduler"]
+    SUP_OPT = OPTIMIZER
+    SUP_SCHED = SCHEDULER
+
 
     # perf
     USE_AMP = bool(opt_cfg.get("use_amp", True))
@@ -90,14 +93,15 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         hyperparameters = model_hyperparameters
         logger.info(f"USING PROVIDED MODEL: {model_str}")
     # name like train.py
-    if experiment_name is None: # for combined training we want same experiment name
-        name_list = [
-            model_str,
-            OPTIMIZER,
-            SCHEDULER,
-            datetime.now().strftime("%H%M%S"),
-        ]
-        experiment_name = "_".join(map(str, name_list))
+    name_list = [
+        f"{exp_cfg['model']}",
+        f"lr{(labram_hp or eegnet_hp).get('lr', 1e-3)}",
+        f"wd{(labram_hp or eegnet_hp).get('weight_decay', 0.0)}",
+        OPTIMIZER,
+        SCHEDULER,
+        datetime.now().strftime("%H%M%S"),
+    ]
+    experiment_name = "_".join(map(str, name_list))
     logger.info(f"Experiment name: {experiment_name}")
 
     # -------- device & seeds ---
@@ -142,12 +146,18 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     if model_str == 'deepconvnet':
         lr = float(deepconvnet_hp.get("lr", 1e-3))
         wd = float(deepconvnet_hp.get("weight_decay", 0.0))
+        sup_lr = float(deepconvnet_hp.get("sup_lr", 1e-3))
+        sup_wd = float(deepconvnet_hp.get("sup_wd", 0.0))
     elif model_str == 'labram':
         lr = float(labram_hp.get("lr", 1e-3))
         wd = float(labram_hp.get("weight_decay", 0.0))
+        sup_lr = float(labram_hp.get("sup_lr", 1e-3))
+        sup_wd = float(labram_hp.get("sup_wd", 0.0))
     elif model_str == 'eegnet':
         lr = float(eegnet_hp.get("lr", 1e-3))
         wd = float(eegnet_hp.get("weight_decay", 0.0))
+        sup_lr = float(eegnet_hp.get("sup_lr", 1e-3))
+        sup_wd = float(eegnet_hp.get("sup_wd", 0.0))
     else:
         raise ValueError(f"Unsupported model: {model_str}")
 
@@ -221,6 +231,30 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         else:
             raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 
+    def make_sup_optimizer(params: Iterable[torch.nn.Parameter]):
+        opt = SUP_OPT.lower()
+        if opt == "adamw":
+            return torch.optim.AdamW(list(params), lr=sup_lr, weight_decay=sup_wd)
+        elif opt == "adam":
+            return torch.optim.Adam(list(params), lr=sup_lr, weight_decay=sup_wd)
+        else:
+            raise ValueError(f"Unsupported supervised optimizer: {SUP_OPT}")
+
+    def make_sup_scheduler(opt: torch.optim.Optimizer):
+        if SUP_SCHED == "CosineAnnealingLR":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min", 0)))
+        elif SUP_SCHED == "CosineAnnealingWarmRestarts":
+            return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                opt,
+                T_0=int(exp_cfg.get("T_0", 100)),
+                T_mult=int(exp_cfg.get("T_mult", 2)),
+                eta_min=float(exp_cfg.get("eta_min", 1e-5)),
+            )
+        elif SUP_SCHED in (None, "None"):
+            return None
+        else:
+            raise ValueError(f"Unsupported supervised scheduler: {SUP_SCHED}")
+
     # -------- episode knobs ---------------
     META_BATCH = int(meta_cfg["meta_batch_size"])
     K_SUPPORT = int(meta_cfg["k_support"])
@@ -238,6 +272,13 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     patch_len = int(data_cfg.get("patch_length", 200))
     channels = int(data_cfg.get("input_channels", 62))
     electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
+
+    ### supervised knobs
+    supervised_cfg = config.get("supervised", {})
+    n_epochs_supervised = int(supervised_cfg.get("n_epochs_supervised", 100))
+    meta_iters_per_meta_epoch = int(supervised_cfg.get("meta_iters_per_meta_epoch", 100))
+    supervised_train_batch_size = int(supervised_cfg.get("train_batch_size", 250))
+    supervised_eval_batch_size = int(supervised_cfg.get("eval_batch_size", 250))
 
     # warm up lazy bits (esp. labram)
     model = model.to(DEVICE)
@@ -305,6 +346,15 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         clip_grad_norm=CLIP_GRAD,
         q_eval=Q_EVAL,
         val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
+
+        n_epochs_supervised=n_epochs_supervised,
+        meta_iters_per_meta_epoch=meta_iters_per_meta_epoch,
+
+        supervised_train_batch_size=supervised_train_batch_size,
+        supervised_eval_batch_size=supervised_eval_batch_size,
+
+        supervised_optimizer_factory=make_sup_optimizer,
+        supervised_scheduler_factory=make_sup_scheduler,
     )
 
     if not with_tester:
@@ -329,7 +379,7 @@ if __name__ == "__main__":
 
     test_cfg = config.get("test", {})
     try:
-        engine.train()
+        engine.train_alternating()
         all_results = tester.test_all_subjects(
             shots_list=test_cfg.get("shots_list", [0, 1, 2, 3, 4, 5, 10, 20, 50, 100]),
             n_epochs=test_cfg.get("n_epochs", 10),
