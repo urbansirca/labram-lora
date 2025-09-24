@@ -93,6 +93,7 @@ class MetaEngine:
         save_regular_checkpoints: bool = False,
         save_final_checkpoint: bool = True,
         save_regular_checkpoints_interval: int = 10,
+        save_best_checkpoints: bool = True,
         checkpoint_dir: Optional[Union[str, Path]] = None,
         # --- RNG ---
         seed: int = 111,
@@ -187,6 +188,7 @@ class MetaEngine:
             )
 
         # checkpoints
+        self.save_best_checkpoints = save_best_checkpoints
         self.save_regular_checkpoints = save_regular_checkpoints
         self.save_final_checkpoint = save_final_checkpoint
         self.save_regular_checkpoints_interval = int(save_regular_checkpoints_interval)
@@ -348,6 +350,11 @@ class MetaEngine:
             "query_loss": getattr(self.metrics, "query_loss", None),
             "val_loss": getattr(self.metrics, "val_loss", None),
             "scheduler_lr": getattr(self.metrics, "scheduler_lr", None),
+            "train_accuracy_supervised": getattr(self.metrics, "train_accuracy_supervised", None),
+            "val_accuracy_supervised": getattr(self.metrics, "val_accuracy_supervised", None),
+            "scheduler_lr_supervised": getattr(self.metrics, "scheduler_lr_supervised", None),
+            "train_loss_supervised": getattr(self.metrics, "train_loss_supervised", None),
+            "val_loss_supervised": getattr(self.metrics, "val_loss_supervised", None),
             "timestamp": time.time(),
         }
         with open(f"{out_stem}_training_metadata.json", "w") as f:
@@ -712,6 +719,8 @@ class MetaEngine:
         # keep a running meta-iteration index so save_regular_checkpoint() still works
         iter_idx = int(getattr(self.metrics, "iteration", 0) or 0)
 
+        best_val_accuracy = 0
+
         for epoch in range(1, int(self.n_epochs_supervised) + 1):
             self.metrics.epoch = epoch
 
@@ -747,6 +756,10 @@ class MetaEngine:
             self.meta_validate_epoch()
             self.log_metrics()
             self.save_regular_checkpoint()
+
+            if self.metrics.val_accuracy > best_val_accuracy and self.save_best_checkpoints:
+                best_val_accuracy = self.metrics.val_accuracy
+                self.checkpoint(name=f"best_val_checkpoint_i_acc{best_val_accuracy:.3f}")
 
         # final checkpoint naming mirrors your meta `train()`
         if self.save_final_checkpoint:

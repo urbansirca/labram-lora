@@ -95,10 +95,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     # name like train.py
     name_list = [
         f"{exp_cfg['model']}",
-        f"lr{(labram_hp or eegnet_hp).get('lr', 1e-3)}",
-        f"wd{(labram_hp or eegnet_hp).get('weight_decay', 0.0)}",
-        OPTIMIZER,
-        SCHEDULER,
+        "alternating",
         datetime.now().strftime("%H%M%S"),
     ]
     experiment_name = "_".join(map(str, name_list))
@@ -334,6 +331,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         save_regular_checkpoints_interval=exp_cfg.get(
             "save_regular_checkpoints_interval", 10
         ),
+        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
         checkpoint_dir=(
             Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name
         ),
