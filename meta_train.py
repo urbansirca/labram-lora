@@ -10,6 +10,7 @@ from meta_engine import MetaEngine
 from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from preprocess_KU_data import get_ku_dataset_channels
+from preprocess_ABC_data import get_ABC_dataset_channels
 from test_engine import TestEngine
 
 # -------- logging ----------
@@ -233,7 +234,10 @@ def get_meta_engine(config, with_tester = False):
     n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
     patch_len = int(data_cfg.get("patch_length", 200))
     channels = int(data_cfg.get("input_channels", 62))
-    electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
+    if "ABC" in str(DATASET_PATH):
+        electrodes = data_cfg.get("electrodes") or get_ABC_dataset_channels()
+    else:
+        electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
 
     # warm up lazy bits (esp. labram)
     model = model.to(DEVICE)
