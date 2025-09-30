@@ -7,9 +7,10 @@ import torch
 from torch.utils.data import DataLoader
 
 from engine import Engine
-from models import EEGNet, load_labram, DeepConvNet
+from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from test_engine import TestEngine
+from preprocess_KU_data import get_ku_dataset_channels
 
 
 # ---------------- logging ----------------
@@ -42,15 +43,25 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     NON_BLOCKING = opt_cfg.get("non_blocking", False)
     USE_AMP = opt_cfg.get("use_amp", False)
 
+    electrodes = get_ku_dataset_channels() or data_cfg.get("electrodes")
+    logger.info(f"USING ELECTRODES: {electrodes}")
+
 # ---------------- model ------------------
     model_name = exp_cfg["model"].lower()
     if model is None:
         if model_name == "labram":
             hyperparameters = config["labram"]
-            model = load_labram(
-                lora=hyperparameters["lora"],
-                peft_config=config["peft_config"],
-            )
+            if hyperparameters["adapter_checkpoint_dir"] is None:
+                model = load_labram(
+                    lora=hyperparameters["lora"],
+                    peft_config=config["peft_config"],
+                )
+            else:
+                model = load_labram_with_adapter(
+                    hyperparameters["adapter_checkpoint_dir"]
+                )
+            model_str = "labram"
+
         
         elif model_name == "deepconvnet":
             hyperparameters = config.get("deepconvnet", {})
@@ -60,6 +71,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 input_time_length=data_cfg.get("samples", 800),
                 final_conv_length="auto",
             )
+            model_str = "deepconvnet"
 
         elif model_name == "eegnet":
             hyperparameters = config.get("eegnet", {})
@@ -78,7 +90,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
                 ),
             )
-
+            model_str = "eegnet"
         else:
             raise ValueError("Invalid model")
 
@@ -89,6 +101,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         model_str = model_str
         hyperparameters = model_hyperparameters
         logger.info(f"USING PROVIDED MODEL: {model_str}")
+
 
 
     # ---------------- run cfg ----------------
@@ -278,7 +291,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         patch_length=patch_len,
 
         # model extras
-        electrodes=data_cfg.get("electrodes"),
+        electrodes=electrodes,
 
         # perf
         use_compile=opt_cfg.get("use_compile", False),
@@ -312,29 +325,28 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     )
 
     if not with_tester:
-        return engine
+        return engine, None
     
-    tester = TestEngine(
-        engine,
-        optimizer_factory=make_optimizer,
-        use_wandb=exp_cfg.get("log_to_wandb", False),
-        wandb_prefix="test",
-        experiment_name=experiment_name,
-    )
+    # tester = TestEngine( #TODO: doesnt work without meta_engine
+    #     engine,
+    #     optimizer_factory=make_optimizer,
+    #     use_wandb=exp_cfg.get("log_to_wandb", False),
+    #     wandb_prefix="test",
+    #     experiment_name=experiment_name,
+    # )
+    return engine, None
 
     # ---------------- run --------------------
 if __name__ == "__main__":
     with open("hyperparameters.yaml", "r") as f:
         config = yaml.safe_load(f)
     try:
-        engine, tester = get_engine(config, with_tester=True)
+        engine, _ = get_engine(config, with_tester=True)
         engine.setup_optimizations()
         engine.train()
-        tester.test_all_subjects()
     finally:
         train_ds.close()
         val_ds.close()
         test_ds.close()
         engine.finish()
 
-        # test_few_shot(model, test_loader, n_shots=10, n_epochs=10)

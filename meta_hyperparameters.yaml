@@ -1,8 +1,7 @@
 experiment:
-  model: eegnet       # or "eegnet"
-  model: labram       # or "eegnet"
+  model: deepconvnet       # or "eegnet"
   device: cuda          # "cuda" | "cpu" | "mps"
-  n_subjects: 87       # used if data.subjects not set
+  n_subjects: 54       # used if data.subjects not set
   seed: 111
   meta_iterations: 1500
   validate_every: 30
@@ -13,7 +12,7 @@ experiment:
   # logging / checkpoints / early stopping
   log_to_wandb: true
   wandb_entity: "urban-sirca-vrije-universiteit-amsterdam"
-  wandb_project: "EEG-FM-ABC"
+  wandb_project: "EEG-FM"
 
 
   save_regular_checkpoints: true
@@ -38,7 +37,7 @@ data:
   # EEGLab/Labram shaping
   n_patches_labram: 4
   patch_length: 200
-  samples: 200                    # 800 for EEGNet (200 for Labram)
+  samples: 800                    # 800 for EEGNet (200 for Labram)
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
@@ -57,7 +56,7 @@ meta:
 supervised:
   train_batch_size: 250
   eval_batch_size: 250
-  n_epochs_supervised: 200
+  n_epochs_supervised: 20
   meta_iters_per_meta_epoch: 10
   validate_meta_every: 0
   drop_last: false
@@ -79,10 +78,9 @@ labram:
   lora_lr: 2e-4          
   head_lr: 5e-4          
   head_weight_decay: 5e-4
-  adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/checkpoint__e10_acc0.565"
+  adapter_checkpoint_dir: "weights/checkpoints/looped_runs/labram_leave_out25-30_lr0.002_wd0.002_AdamW_CosineAnnealingLR_233154/final_checkpoint_e37_acc0.786"
   sup_lr: 2e-4
   sup_wd: 5e-4
-  adapter_checkpoint_dir: "weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_131222/checkpoint__e55_acc0.852"
 
 peft_config:
   r: 2
@@ -104,7 +102,7 @@ deepconvnet:
   lr: 0.001
   weight_decay: 0.0
   sup_lr: 0.001
-  sup_wd: 0.0
+  sup_wd: 0.001
   
 test:
   shots_list: [0, 1, 2, 3, 4, 5, 10, 25, 50]

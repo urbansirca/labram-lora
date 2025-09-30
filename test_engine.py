@@ -487,11 +487,114 @@ class TestEngine:
 
             with open(self.save_dir / "aggregated_results.json", "w") as f:
                 json.dump(summary, f, indent=2)
+        
+        self.plot_aggregated_results(
+            self.save_dir / "aggregated_results.json",
+            metric="final_accuracy",
+            save_path=self.save_dir / "plot_final_accuracy.png",
+        )
+
+        logger.info(f"Saved aggregated results to {self.save_dir / 'aggregated_results.json'}")
+        logger.info(f"Saved plot to {self.save_dir / 'plot_final_accuracy.png'}")
 
         logger.info(
             f"Testing completed for all {len(self.meta_engine.S_test)} subjects"
         )
         return all_results
+
+    def plot_aggregated_results(
+        self,
+        json_path: Union[str, Path],
+        metric: str = "final_accuracy",
+        title: Optional[str] = None,
+        save_path: Optional[Union[str, Path]] = None,
+        show: bool = False,
+    ):
+        """
+        Plot per-subject lines and the average line across shots from aggregated_results.json.
+
+        Args:
+            json_path: Path to aggregated_results.json (produced by TestEngine.test_all_subjects).
+            metric: Metric key inside aggregated results to plot (default: "final_accuracy").
+            title: Optional plot title. Defaults to experiment_name if present.
+            save_path: Where to save the plot PNG. Defaults next to json: "plot_{metric}.png".
+            show: Whether to call plt.show().
+
+        Returns:
+            (fig, ax): Matplotlib figure and axis.
+        """
+        import json
+        from pathlib import Path
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        json_path = Path(json_path)
+        with open(json_path, "r") as f:
+            summary = json.load(f)
+
+        exp_name = summary.get("experiment_name", "")
+        shots_list = summary.get("shots_list", [])
+        agg = pd.DataFrame(summary.get("aggregated_results", []))
+
+        if agg.empty:
+            raise ValueError("No aggregated_results found in the JSON.")
+
+        # Ensure expected columns exist
+        required_cols = {"subject_id", "shots", metric}
+        if not required_cols.issubset(agg.columns):
+            missing = required_cols - set(agg.columns)
+            raise ValueError(f"Missing required columns in aggregated_results: {missing}")
+
+        # Pivot for easier plotting; one subject per 'line'
+        # Not all subjects necessarily have all shots; leave missing as NaN
+        pivot = agg.pivot_table(
+            index="shots", columns="subject_id", values=metric, aggfunc="mean"
+        ).sort_index()
+
+        # Compute mean across subjects for each shot
+        mean_series = pivot.mean(axis=1)
+
+        # Prepare plot
+        fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
+
+        # Plot each subject line
+        # We avoid adding a legend entry per subject to keep it clean
+        ax.plot([], [], alpha=0.3, label="Per-subject")  # legend stub
+        for sid in pivot.columns:
+            ax.plot(pivot.index, pivot[sid], alpha=0.3, linewidth=1.5)
+
+        # Plot average line on top
+        ax.plot(
+            mean_series.index,
+            mean_series.values,
+            color="black",
+            linewidth=2.5,
+            marker="o",
+            label="Average",
+            zorder=5,
+        )
+
+        # Cosmetic settings
+        ax.set_xlabel("Shots")
+        ax.set_ylabel(metric.replace("_", " ").title())
+        if title is None:
+            title = f"{exp_name} — {metric.replace('_', ' ').title()}"
+        ax.set_title(title)
+        ax.grid(True, linestyle="--", alpha=0.3)
+        ax.legend()
+
+        # Save
+        if save_path is None:
+            save_path = json_path.parent / f"plot_{metric}.png"
+        save_path = Path(save_path)
+        fig.savefig(save_path, dpi=200)
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+        return fig, ax
 
 
 # # Example usage function
