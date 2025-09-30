@@ -196,3 +196,8 @@ wandb/
 Thumbs.db
 
 
+BCI_Database.zip
+BCI Database/
+weights/
+*.err
+*.out

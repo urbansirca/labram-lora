@@ -415,6 +415,14 @@ class MetaEngine:
                 self.non_blocking,
             )
 
+            # def _summ(lbl): 
+            #     u, c = torch.unique(lbl, return_counts=True)
+            #     return {int(u[i]): int(c[i]) for i in range(len(u))}
+            # print(f"SUP labels: {_summ(ys)} | QUE labels: {_summ(yq)}")
+
+            # print("SUP subj/run:", sup_idx, 
+            #     "QUE subj/run:", que_idx, que_runs)
+
             fast = self._clone_as_leaf(base_params)
             fast_dict = dict(zip(base_names, fast))
             for _ in range(self.inner_steps):
