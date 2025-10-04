@@ -55,9 +55,9 @@ def get_meta_engine(config, with_tester = False):
             lora=labram_hp.get("lora", True),
             peft_config=peft_cfg,
         )
-        # model = load_labram_with_adapter(
-        #     labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
-        # )
+        model = load_labram_with_adapter(
+            labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+        )
 
         model_str = "labram"
 

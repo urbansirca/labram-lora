@@ -228,13 +228,13 @@ def write_h5(out_path: Path, subjects: list[Path], scheme='sequential'):
                 continue
             gname = f"s{sid}" if scheme == 'sequential' else subj.name.lower()
             g = h5.create_group(gname)
-            g.create_dataset("X", data=X, dtype='float32', compression='gzip')
-            g.create_dataset("Y", data=Y, dtype='int64',  compression='gzip')
+            g.create_dataset("X", data=X, dtype='float32')
+            g.create_dataset("Y", data=Y, dtype='int64')
             print(f"[ok] {subj.name} -> /{gname} | X={X.shape} Y={Y.shape}")
             sid += 1
 
 if __name__ == "__main__":
-    root = Path("/home/lovro/BCI/BCI_Database/Signals") 
+    root = Path("/home/usirca/workspace/labram-lora/BCI Database/Signals") 
 
     # Store paths of all subjects (example: BCI_Database/Signals/DATA B/B79)
     subjects = []
