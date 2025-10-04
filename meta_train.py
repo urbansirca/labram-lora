@@ -50,20 +50,16 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     chans = int(data_cfg.get("input_channels", 62))
     samples = int(data_cfg.get("samples", 800))
     classes = int(data_cfg.get("num_classes", 2))
-    if model is None:
-        # -------- model ------------
-        model_name = exp_cfg["model"].lower()
-        if model_name == "labram":
-            if labram_hp.get("adapter_checkpoint_dir", None) is not None:
-                model = load_labram_with_adapter(
-                        labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
-                    )
-            else:
-                model = load_labram(
-                    lora=labram_hp.get("lora", True),
-                    peft_config=peft_cfg,
-                )
-            
+    # -------- model ------------
+    model_name = exp_cfg["model"].lower()
+    if model_name == "labram":
+        model = load_labram(
+            lora=labram_hp.get("lora", True),
+            peft_config=peft_cfg,
+        )
+        model = load_labram_with_adapter(
+            labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+        )
 
             model_str = "labram"
 
