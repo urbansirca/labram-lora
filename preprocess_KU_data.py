@@ -10,6 +10,191 @@ from scipy.io import loadmat
 from scipy.signal import decimate, butter, filtfilt, iirnotch
 from tqdm import tqdm
 
+def _to_ECT(X):
+    """
+    Ensure shape is (E, C, T). If X is (E, C, P, S), merge P*S -> T.
+    Returns:
+        X_ect : (E,C,T)
+        info  : dict for reshaping back
+    """
+    if X.ndim == 3:
+        E, C, T = X.shape
+        return X, {"patched": False, "shape": (E, C, T)}
+    elif X.ndim == 4:
+        E, C, P, S = X.shape
+        X_ect = X.reshape(E, C, P * S)
+        return X_ect, {"patched": True, "shape": (E, C, P, S)}
+    else:
+        raise ValueError(f"Unsupported X.ndim={X.ndim}; expected 3 or 4")
+
+
+def _from_ECT(X_ect, info):
+    """
+    Reshape back to original shape using info from _to_ECT.
+    """
+    if not info["patched"]:
+        return X_ect.reshape(info["shape"])
+    else:
+        E, C, P, S = info["shape"]
+        return X_ect.reshape(E, C, P, S)
+
+
+# ----------------------------
+# Core normalization utilities
+# ----------------------------
+
+
+def _safe_stats(x, axis, eps):
+    """
+    Return (mean, std) with std floored by eps to avoid divide-by-zero.
+    """
+    mu = np.nanmean(x, axis=axis, keepdims=True)
+    sd = np.nanstd(x, axis=axis, keepdims=True)
+    sd = np.maximum(sd, eps)
+    return mu, sd
+
+
+def normalize_per_subject_channel(X, support_mask=None, eps=1e-6):
+    """
+    Z-score per channel using stats computed over the selected 'support' trials
+    of the same subject. Applies those stats to all trials.
+
+    Args:
+        X : np.ndarray, shape (E,C,T) or (E,C,P,S)
+        support_mask : None or boolean array of shape (E,). If None, use all E as support.
+        eps : float, numerical stability
+
+    Returns:
+        X_norm : same shape as X
+        stats  : dict with 'mu' and 'std' of shape (1,C,1) for ECT, applied to all trials
+    """
+    X_ect, info = _to_ECT(X)
+    E, C, T = X_ect.shape
+    if support_mask is None:
+        support_mask = np.ones(E, dtype=bool)
+
+    # Compute μ,σ over (support epochs, time) per channel
+    x_sup = X_ect[support_mask]  # (Esup, C, T)
+    mu, sd = _safe_stats(x_sup, axis=(0, 2), eps=eps)  # (1, C, 1)
+
+    # Apply to all trials
+    Xn = (X_ect - mu) / sd
+    Xn = _from_ECT(Xn, info)
+    stats = {"mu": mu.squeeze(axis=(0, 2)), "std": sd.squeeze(axis=(0, 2))}
+    return Xn, stats
+
+
+def normalize_per_run_channel(X, run_ids=None, support_mask=None, eps=1e-6):
+    """
+    Z-score per channel, *per run*. Stats are computed within each run over
+    support trials (if provided), then applied to all trials in that run.
+
+    Args:
+        X : np.ndarray, shape (E,C,T) or (E,C,P,S)
+        run_ids : array of shape (E,), values in {0,1,2,3}. If None, assumes 4 runs of 100 trials each.
+        support_mask : None or boolean array of shape (E,). If provided, stats per run are computed on support trials within that run.
+        eps : float
+
+    Returns:
+        X_norm : same shape as X
+        stats  : dict with 'mu' and 'std' arrays of shape (R, C)
+    """
+    X_ect, info = _to_ECT(X)
+    E, C, T = X_ect.shape
+
+    # Default run_ids: 4 runs × 100 trials (assert E == 400)
+    if run_ids is None:
+        if E % 100 != 0:
+            raise ValueError(
+                "run_ids not provided and E is not a multiple of 100; cannot infer 4 runs × 100."
+            )
+        R = E // 100
+        run_ids = np.repeat(np.arange(R), 100)
+    else:
+        run_ids = np.asarray(run_ids)
+        R = int(run_ids.max()) + 1
+
+    if support_mask is None:
+        support_mask = np.ones(E, dtype=bool)
+
+    Xn = np.empty_like(X_ect)
+    mu_all = np.zeros((R, C), dtype=X_ect.dtype)
+    sd_all = np.zeros((R, C), dtype=X_ect.dtype)
+
+    for r in range(R):
+        idx_all = run_ids == r
+        idx_sup = idx_all & support_mask
+        if not np.any(idx_sup):
+            # fallback: if no support in this run, use all trials in the run (still leakage-safe if you design support_mask to include at least some)
+            idx_sup = idx_all
+
+        x_sup = X_ect[idx_sup]  # (E_run_sup, C, T)
+        mu, sd = _safe_stats(x_sup, axis=(0, 2), eps=eps)  # (1, C, 1)
+        mu_all[r] = mu.squeeze()
+        sd_all[r] = sd.squeeze()
+
+        # normalize all trials in this run with that run's stats
+        Xn[idx_all] = (X_ect[idx_all] - mu) / sd
+
+    Xn = _from_ECT(Xn, info)
+    stats = {"mu": mu_all, "std": sd_all}
+    return Xn, stats
+
+
+def normalize_per_trial_channel(X, eps=1e-6):
+    """
+    Z-score per channel, *per trial* (instance normalization).
+    Each trial (epoch) is normalized using its own (mean,std) per channel over time.
+
+    Args:
+        X : np.ndarray, shape (E,C,T) or (E,C,P,S)
+        eps : float
+
+    Returns:
+        X_norm : same shape as X
+        stats  : dict with 'mu' and 'std' of shape (E, C)
+    """
+    X_ect, info = _to_ECT(X)
+    E, C, T = X_ect.shape
+
+    # Compute (E,C,1) stats
+    mu = np.nanmean(X_ect, axis=2, keepdims=True)  # (E,C,1)
+    sd = np.nanstd(X_ect, axis=2, keepdims=True)  # (E,C,1)
+    sd = np.maximum(sd, eps)
+
+    Xn = (X_ect - mu) / sd
+    Xn = _from_ECT(Xn, info)
+    stats = {"mu": mu.squeeze(-1), "std": sd.squeeze(-1)}  # (E,C)
+    return Xn, stats
+
+
+# ----------------------------
+# Convenience dispatcher
+# ----------------------------
+
+
+def normalize_X(
+    X,
+    mode="subject",  # "subject" | "run" | "trial"
+    support_mask=None,  # boolean (E,) for "subject" or "run" modes
+    run_ids=None,  # array (E,) for "run" mode; if None assumes 4×100
+    eps=1e-6,
+):
+    """
+    Dispatch to the chosen normalization strategy.
+    Returns (X_norm, stats)
+    """
+    if mode == "subject":
+        return normalize_per_subject_channel(X, support_mask=support_mask, eps=eps)
+    elif mode == "run":
+        return normalize_per_run_channel(
+            X, run_ids=run_ids, support_mask=support_mask, eps=eps
+        )
+    elif mode == "trial":
+        return normalize_per_trial_channel(X, eps=eps)
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
+
 
 def get_standard_1020_channels():
     """Get the standard 10-20 EEG channel layout from Lee et al."""
@@ -152,7 +337,6 @@ def get_standard_1020_channels():
         "P4-O2",
     ]
 
-
 def get_ku_dataset_channels():
     """Get the channel names from the KU dataset."""
     return [
@@ -247,6 +431,9 @@ class DataPreprocessingConfig:
 
     # Common Average Rereferencing
     apply_car: bool = True
+    
+    # Normalization parameters
+    normalize_mode: str = "subject"  # "subject" | "run" | "trial"
 
     # Patching parameters
     apply_patching: bool = True
@@ -295,7 +482,7 @@ class DataPreprocessingConfig:
             "labram": {
                 "source_path": source_path,
                 "target_path": target_path,
-                "output_name": "KU_mi_labram_preprocessed.h5",
+                "output_name": "KU_mi_labram_preprocessed_normalized.h5",
                 "apply_bandpass": True,
                 "bandpass_low": 0.5,
                 "bandpass_high": 100.0,
@@ -308,6 +495,7 @@ class DataPreprocessingConfig:
                 "apply_patching": True,
                 "patch_size": 200,
                 "patch_overlap": 0,
+                "normalize_mode": "subject", 
             },
             "neurogpt": {
                 "source_path": source_path,
@@ -322,6 +510,7 @@ class DataPreprocessingConfig:
                 "original_fs": 1000,
                 "downsample_factor": 4,  # 1000 -> 250 Hz
                 "apply_channel_selection": True,
+                "normalize_mode": "subject",
             },
             "minimal": {
                 "source_path": source_path,
@@ -333,6 +522,7 @@ class DataPreprocessingConfig:
                 "original_fs": 1000,
                 "downsample_factor": 4,  # Original script behavior
                 "apply_channel_selection": False,
+                "normalize_mode": "subject",
             },
         }
 
@@ -552,25 +742,82 @@ def get_data(sess, subj, config: DataPreprocessingConfig):
     return X, Y
 
 
+def _get_train_count_for_session(source_path: str, sess: int, subj: int) -> int:
+    """
+    Return number of train trials for (sess, subj) from the raw .mat,
+    so we can build a leakage-safe support_mask.
+    """
+    fname = f"sess{sess:02d}_subj{subj:02d}_EEG_MI.mat"
+    raw = loadmat(pjoin(source_path, fname))
+    # EEG_MI_train['smt'] has shape (time, epochs, channels); epochs is axis=1
+    n_train = raw["EEG_MI_train"]["smt"][0][0].shape[1]
+    return int(n_train)
+
+
 def preprocess_ku_data(config: DataPreprocessingConfig):
     """Main preprocessing function."""
 
     config.print_summary()
 
-    # Process all subjects
     output_path = pjoin(config.target_path, config.output_name)
     with h5py.File(output_path, "w") as f:
         for subj in tqdm(range(1, 55), desc="Processing subjects"):
+            # Get per-session data (each already concatenates train+test inside get_data)
             X1, Y1 = get_data(1, subj, config)
             X2, Y2 = get_data(2, subj, config)
 
+            # Concatenate sessions
             X = np.concatenate((X1, X2), axis=0)
-            X = X.astype(np.float32)
             Y = np.concatenate((Y1, Y2), axis=0)
+
+            # -------------------- NORMALIZATION (drop-in) --------------------
+            # Build a leakage-safe support mask: mark TRAIN trials as support, TEST as query
+            # We read counts from the raw .mat to avoid guessing.
+            n_train_s1 = _get_train_count_for_session(config.source_path, 1, subj)
+            n_train_s2 = _get_train_count_for_session(config.source_path, 2, subj)
+
+            E1 = X1.shape[0]  # total trials in session 1 (train+test after get_data)
+            E2 = X2.shape[0]  # total trials in session 2
+            support_mask = np.zeros(E1 + E2, dtype=bool)
+            # Session 1 occupies [0, E1) in X
+            support_mask[:n_train_s1] = True
+            # Session 2 occupies [E1, E1+E2) in X
+            support_mask[E1 : E1 + n_train_s2] = True
+
+            # --- Choose ONE normalization mode ---
+            # A) Per-subject, per-channel (recommended for meta-learning; leakage-safe)
+            if config.normalize_mode == "subject":
+                Xn, stats = normalize_X(
+                    X, mode="subject", support_mask=support_mask, eps=1e-6
+                )
+
+            # B) Per-run, per-channel (uncomment if you prefer run-wise stats)
+            # If you truly have 4 runs × 100 trials after concatenating s1+s2:
+            elif config.normalize_mode == "run":
+                assert X.shape[0] == 400, "Expected 400 trials for run-wise normalization"
+                run_ids = np.repeat(np.arange(4), 100)  # length must equal X.shape[0] (=400)
+                Xn, stats = normalize_X(X, mode="run", run_ids=run_ids, support_mask=support_mask, eps=1e-6)
+
+            # C) Per-trial, per-channel (instance normalization; always leakage-safe but removes amplitude cues)
+            elif config.normalize_mode == "trial":
+                Xn, stats = normalize_X(X, mode="trial", eps=1e-6)
+            else:
+                raise ValueError(f"Unknown normalization_mode: {config.normalize_mode}")
+
+            # -------------------- SAVE --------------------
+            Xn = Xn.astype(np.float32)
             Y = Y.astype(np.int64)
 
-            f.create_dataset("s" + str(subj) + "/X", data=X)
-            f.create_dataset("s" + str(subj) + "/Y", data=Y)
+            grp = f.create_group(f"s{subj}")
+            grp.create_dataset("X", data=Xn)
+            grp.create_dataset("Y", data=Y)
+
+            # also save normalization stats so you can reapply at inference
+            # Subject-level stats:
+            if "mu" in stats and "std" in stats:
+                grp.create_dataset("norm/mu", data=np.asarray(stats["mu"]))
+                grp.create_dataset("norm/std", data=np.asarray(stats["std"]))
+            # If you used run-wise stats, 'mu'/'std' will be shape (R, C) — still fine to save.
 
     print(f"Preprocessing complete! Output saved to: {output_path}")
 
