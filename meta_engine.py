@@ -73,7 +73,7 @@ class MetaEngine:
             [torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]
         ],
         # --- episode design (explicit knobs) ---
-        meta_batch_size: int,
+        # meta_batch_size: int,
         k_support: int,
         q_query: Optional[int],  # None => all remaining
         inner_steps: int,
@@ -91,15 +91,13 @@ class MetaEngine:
         config_for_logging: Optional[Dict] = None,  # optional, just to dump
         # --- checkpoints (same knobs) ---
         save_regular_checkpoints: bool = False,
-        save_final_checkpoint: bool = True,
         save_regular_checkpoints_interval: int = 10,
         save_best_checkpoints: bool = True,
+        save_final_checkpoint: bool = True,
         checkpoint_dir: Optional[Union[str, Path]] = None,
         # --- RNG ---
         seed: int = 111,
         # --- Labram ---
-        n_patches_labram: int = 4,
-        samples: int = 200,
         channels: int = 62,
         electrodes: List[str] = None,
         clip_grad_norm: float = None,
@@ -137,7 +135,6 @@ class MetaEngine:
         self.S_train, self.S_val, self.S_test = list(S_train), list(S_val), list(S_test)
 
         # episode knobs
-        self.T = int(meta_batch_size)
         self.K = int(k_support)
         self.Q = q_query
         self.Q_eval = q_eval or q_query
@@ -168,8 +165,6 @@ class MetaEngine:
         self.config_for_logging = config_for_logging
 
         # Labram
-        self.n_patches_labram = n_patches_labram
-        self.samples = samples
         self.channels = channels
         self.electrodes = electrodes
 
@@ -374,7 +369,7 @@ class MetaEngine:
             self.checkpoint(name=name)
 
     def meta_step(self, subjects_batch: List[int]):
-        self.model.eval()  # freeze BN running stats during meta-episode
+        self.model.eval()  # freeze BN running stats during meta-episode #TODO: check with professor
         base_named = [
             (n, p)
             for n, p in self.model.named_parameters()
@@ -416,22 +411,6 @@ class MetaEngine:
                 self.device,
                 self.non_blocking,
             )
-
-            # def _summ(lbl): 
-            #     u, c = torch.unique(lbl, return_counts=True)
-            #     return {int(u[i]): int(c[i]) for i in range(len(u))}
-            # print(f"SUP labels: {_summ(ys)} | QUE labels: {_summ(yq)}")
-
-            # print("SUP subj/run:", sup_idx, 
-            #     "QUE subj/run:", que_idx, que_runs)
-
-            # def _summ(lbl): 
-            #     u, c = torch.unique(lbl, return_counts=True)
-            #     return {int(u[i]): int(c[i]) for i in range(len(u))}
-            # print(f"SUP labels: {_summ(ys)} | QUE labels: {_summ(yq)}")
-
-            # print("SUP subj/run:", sup_idx, 
-            #     "QUE subj/run:", que_idx, que_runs)
 
             fast = self._clone_as_leaf(base_params)
             fast_dict = dict(zip(base_names, fast))
@@ -491,7 +470,7 @@ class MetaEngine:
 
     def meta_validate_epoch(self):
         """Adapt per subject on K shots, measure query. No outer update, no model mutation."""
-        self.model.eval()
+        self.model.eval() #TODO: check with professor
         rng = self.rng
 
         E = int(getattr(self, "val_episodes_per_subject", 0))
@@ -567,7 +546,7 @@ class MetaEngine:
         self.metrics.val_loss = torch.stack(total_losses).mean().cpu().item()
         self.metrics.val_accuracy = float(total_correct) / max(1, int(total_count))
 
-    def train(self):
+    def meta_train(self):
         for i in range(1, self.meta_iterations + 1):
             self.metrics.iteration = i
             T = min(self.T, len(self.S_train))
@@ -741,35 +720,26 @@ class MetaEngine:
             # -------- 1) supervised epoch (normal loss) --------
             self.supervised_train_epoch()  # uses self.sup_train_loader
             self.supervised_validate_epoch()  # uses self.sup_val_loader
-            # self.log_metrics()
-
-            # if self.checkpoint_supervised:
-            #     metric = self.metrics.val_accuracy_supervised if self.metrics.val_accuracy_supervised is not None else self.metrics.train_accuracy_supervised
-            #     metric_str = f"{metric:.3f}" if metric is not None else "NA"
-            #     self.checkpoint(name=f"checkpoint_SUP_e{epoch}_acc{metric_str}")
-
+      
             # -------- 2) meta block (N iterations) -------------
             for j in range(1, int(self.meta_iters_per_meta_epoch) + 1):
                 iter_idx += 1
                 self.metrics.iteration = iter_idx
-
-                T = min(self.T, len(self.S_train))
-                subjects_batch = self.rng.sample(self.S_train, k=T)
-                self.meta_step(subjects_batch)
+                self.meta_step(self.S_train)
 
                 if self.scheduler is not None:
                     self.scheduler.step()
 
-                # # optional intra-block meta validation/logging/checkpointing
-                # if self.validate_meta_every > 0 and (j % self.validate_meta_every == 0):
-                #     self.meta_validate_epoch()
-                #     self.log_metrics()
-                #     self.save_regular_checkpoint()
+                # optional intra-block meta validation/logging/checkpointing
+                if self.validate_meta_every > 0 and (j % self.validate_meta_every == 0):
+                    self.meta_validate_epoch()
+                    self.log_metrics()
 
             # end-of-block meta validation if user asked for "only at meta epoch end"
             self.meta_validate_epoch()
             self.log_metrics()
             self.save_regular_checkpoint()
+
 
             if self.metrics.val_accuracy > best_val_accuracy and self.save_best_checkpoints:
                 best_val_accuracy = self.metrics.val_accuracy
