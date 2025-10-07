@@ -152,6 +152,7 @@ class Engine(BaseEngine):
             assert (C, *rest) == (self.input_channels, self.n_patches_labram, self.patch_length), \
                 f"Per-sample shape should be {(self.input_channels, self.n_patches_labram, self.patch_length)} but is {(C, *rest)}"
 
+
     def save_regular_checkpoint(self, joined: bool = False):
         if self.save_regular_checkpoints and self.metrics.epoch % self.save_regular_checkpoints_interval == 0:
             joined_txt = "JOINED" if joined else ""
