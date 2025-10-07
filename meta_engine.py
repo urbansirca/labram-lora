@@ -4,7 +4,7 @@ import time
 import math
 import random
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable
 
 import torch
 import torch.nn as nn
@@ -20,28 +20,24 @@ from meta_helpers import (
     sample_query_no_run,
 )
 
+
 from torch.utils.data import DataLoader
 
-
+from base_engine import BaseEngine
 logger = logging.getLogger(__name__)
 
 
 class Metrics:
     epoch: Optional[int] = None
-    # train-side (per outer step / epoch)
     support_loss: Optional[float] = None
     query_loss: Optional[float] = None
     train_accuracy: Optional[float] = None
-    # val-side
     val_loss: Optional[float] = None
     val_accuracy: Optional[float] = None
-    # test-side
     test_loss: Optional[float] = None
     test_accuracy: Optional[float] = None
-    # optimizer/scheduler
     scheduler_lr: Optional[float] = None
     grad_norm: Optional[float] = None
-
     train_loss_supervised: Optional[float] = None
     train_accuracy_supervised: Optional[float] = None
     val_loss_supervised: Optional[float] = None
@@ -49,14 +45,30 @@ class Metrics:
     scheduler_lr_supervised: Optional[float] = None
 
 
-class MetaEngine:
+class MetaEngine(BaseEngine):
     def __init__(
         self,
-        # --- core run identity/infra (mirrors Engine) ---
-        model: nn.Module,
+        # --- BASE ---
         model_str: str,
         experiment_name: str,
         device: Union[str, torch.device],
+        model: nn.Module,
+        electrodes: Optional[List[str]] = None,
+        *,
+        non_blocking: bool,
+        pin_memory: bool,
+        use_amp: bool,
+        use_compile: bool,
+        use_wandb: bool = False,
+        wandb_entity: Optional[str] = None,
+        wandb_project: Optional[str] = None,
+        config_for_logging: Optional[Dict[str, Any]] = None,
+        save_regular_checkpoints: bool = False,
+        save_regular_checkpoints_interval: int = 10,
+        save_best_checkpoints: bool = True,
+        save_final_checkpoint: bool = True,
+        checkpoint_dir: Optional[Union[str, Path]] = None,
+        # --- SPECIFIC ---
         meta_iterations: int,
         validate_every: int,
         validate_meta_every: int,
@@ -67,67 +79,56 @@ class MetaEngine:
         S_train: List[int],
         S_val: List[int],
         S_test: List[int],
-        # --- optim / sched (factories, like Engine) ---
+        # loss / factories
         loss_fn: Optional[nn.Module],
         optimizer_factory: Callable[[nn.Module], torch.optim.Optimizer],
-        scheduler_factory: Callable[
-            [torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]
-        ],
-        # --- episode design (explicit knobs) ---
-        # meta_batch_size: int,
+        scheduler_factory: Callable[[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]],
+        # episode design
         k_support: int,
         q_query: Optional[int],  # None => all remaining
         inner_steps: int,
         inner_lr: float,
         run_size: int,  # used for episode indexing
-        # --- perf knobs (same names/semantics as Engine) ---
-        use_amp: bool = True,
-        non_blocking: bool = True,
-        pin_memory: bool = False,
-        use_compile: bool = False,
-        # --- logging (same knobs) ---
-        use_wandb: bool = False,
-        wandb_entity: Optional[str] = None,
-        wandb_project: Optional[str] = None,
-        config_for_logging: Optional[Dict] = None,  # optional, just to dump
-        # --- checkpoints (same knobs) ---
-        save_regular_checkpoints: bool = False,
-        save_regular_checkpoints_interval: int = 10,
-        save_best_checkpoints: bool = True,
-        save_final_checkpoint: bool = True,
-        checkpoint_dir: Optional[Union[str, Path]] = None,
         # --- RNG ---
         seed: int = 111,
         # --- Labram ---
         channels: int = 62,
-        electrodes: List[str] = None,
         clip_grad_norm: float = None,
         q_eval: int = None,
         val_episodes_per_subject: int = None,
+        # supervised-in-meta knobs
         n_epochs_supervised: int = 100,
         meta_iters_per_meta_epoch: int = 100,
         supervised_train_batch_size: int = 250,
         supervised_eval_batch_size: int = 250,
-        # --- extra (supervised) factories; default to the meta factories ---
-        supervised_optimizer_factory: Optional[
-            Callable[[nn.Module], torch.optim.Optimizer]
-        ] = None,
-        supervised_scheduler_factory: Optional[
-            Callable[
-                [torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]
-            ]
-        ] = None,
+        supervised_optimizer_factory: Optional[Callable[[nn.Module], torch.optim.Optimizer]] = None,
+        supervised_scheduler_factory: Optional[Callable[[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]]] = None,
     ):
-        # device / model
-        self.device = torch.device(device) if isinstance(device, str) else device
-        self.model = model.to(self.device)
-        if use_compile:
-            self.model = torch.compile(self.model)
-        self.model_str = model_str
-        self.use_amp = use_amp
+        super().__init__(
+            model_str=model_str,
+            experiment_name=experiment_name,
+            device=device,
+            model=model,
+            electrodes=electrodes,
+
+            non_blocking=non_blocking,
+            pin_memory=pin_memory,
+            use_amp=use_amp,
+            use_compile=use_compile,
+        
+            use_wandb=use_wandb,
+            wandb_entity=wandb_entity,
+            wandb_project=wandb_project,
+            config_for_logging=config_for_logging,
+
+            save_regular_checkpoints=save_regular_checkpoints,
+            save_regular_checkpoints_interval=save_regular_checkpoints_interval,
+            save_best_checkpoints=save_best_checkpoints,
+            save_final_checkpoint=save_final_checkpoint,
+            checkpoint_dir=checkpoint_dir,
+        )
 
         # id / meta_iterations
-        self.experiment_name = experiment_name
         self.meta_iterations = int(meta_iterations)
 
         # datasets / splits
@@ -154,34 +155,11 @@ class MetaEngine:
         self.scheduler_factory = scheduler_factory
         self.clip_grad_norm = clip_grad_norm
 
-        # perf
-        self.non_blocking = non_blocking
-        self.pin_memory = pin_memory
-
         # logging
-        self.use_wandb = bool(use_wandb)
-        self.wandb_run = None
-        self.wandb_entity = wandb_entity
-        self.wandb_project = wandb_project
         self.config_for_logging = config_for_logging
 
         # Labram
         self.channels = channels
-        self.electrodes = electrodes
-
-        if self.use_wandb:
-            import wandb
-
-            assert self.wandb_project, "wandb_project must be set when use_wandb=True"
-            logger.info(
-                f"Setting up wandb: {self.wandb_entity}/{self.wandb_project} :: {self.experiment_name}"
-            )
-            self.wandb_run = wandb.init(
-                entity=self.wandb_entity,
-                project=self.wandb_project,
-                name=self.experiment_name,
-                config=self.config_for_logging,
-            )
 
         # checkpoints
         self.save_best_checkpoints = save_best_checkpoints
@@ -207,7 +185,7 @@ class MetaEngine:
 
         # misc
         self.metrics = Metrics()
-        self._t0 = time.time()
+        
         self._printed_header = False
         self.rng = random.Random(int(seed))
         self.seed = seed
@@ -311,50 +289,6 @@ class MetaEngine:
                 args=(),
                 kwargs={"x": x, "electrodes": self.electrodes},
             )
-
-    def _forward(self, X):
-        if self.use_amp:
-            with torch.autocast(device_type=self.device.type):
-                return self.model(x=X, electrodes=self.electrodes)
-        else:
-            return self.model(x=X, electrodes=self.electrodes)
-
-    # ---------- logging (compact console; wandb optional) ----------
-    def log_metrics(self):
-        m = {k: v for k, v in self.metrics.__dict__.items() if v is not None}
-        line = " | ".join(
-            f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
-            for k, v in m.items()
-        )
-        line += f" | Runtime: {time.time() - self._t0:.2f}s"
-        logger.info(line)
-        self._t0 = time.time()
-        if self.use_wandb and self.wandb_run is not None:
-            self.wandb_run.log(m)
-
-    # ---------- checkpoints (same behavior as Engine) ----------
-    def checkpoint(self, name: str = "checkpoint"):
-        out_stem = str(self.checkpoint_root / name)
-        if hasattr(self.model, "save_pretrained"):
-            self.model.save_pretrained(out_stem)
-        else:
-            torch.save(self.model.state_dict(), f"{out_stem}.pt")
-        metadata = {
-            "iteration": getattr(self.metrics, "iteration", None),
-            "train_accuracy": getattr(self.metrics, "train_accuracy", None),
-            "val_accuracy": getattr(self.metrics, "val_accuracy", None),
-            "query_loss": getattr(self.metrics, "query_loss", None),
-            "val_loss": getattr(self.metrics, "val_loss", None),
-            "scheduler_lr": getattr(self.metrics, "scheduler_lr", None),
-            "train_accuracy_supervised": getattr(self.metrics, "train_accuracy_supervised", None),
-            "val_accuracy_supervised": getattr(self.metrics, "val_accuracy_supervised", None),
-            "scheduler_lr_supervised": getattr(self.metrics, "scheduler_lr_supervised", None),
-            "train_loss_supervised": getattr(self.metrics, "train_loss_supervised", None),
-            "val_loss_supervised": getattr(self.metrics, "val_loss_supervised", None),
-            "timestamp": time.time(),
-        }
-        with open(f"{out_stem}_training_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
 
     def save_regular_checkpoint(self):
         if self.save_regular_checkpoints and (
