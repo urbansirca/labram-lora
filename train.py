@@ -4,6 +4,7 @@ from pathlib import Path
 
 import yaml
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from engine import Engine
@@ -266,62 +267,48 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     patch_len = data_cfg.get("patch_length") if model_str == "labram" else None
 
     engine = Engine(
-        # core
-        model=model,
+        # --- BASE ---
         model_str=model_str,
         experiment_name=experiment_name,
         device=DEVICE,
+        model=model,
+        electrodes=electrodes,
+        non_blocking=NON_BLOCKING,
+        pin_memory=PIN_MEMORY,
+        use_amp=USE_AMP,
+        use_compile=opt_cfg.get("use_compile", False),
+        use_wandb=exp_cfg.get("log_to_wandb", False),
+        wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
+        wandb_project="EEG-FM",
+        config_for_logging=config,
+        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
+        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
+        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
+        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
+        checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints" / experiment_name),
+        # --- SPECIFIC ---
         n_epochs=N_EPOCHS,
-
-        # data
+        # data loaders
         training_set=train_loader,
         validation_set=val_loader,
         test_set=test_loader,
         train_after_stopping_set=train_after_stopping_loader,
-
-        # optimization
+        # loss / factories
+        loss_fn=nn.CrossEntropyLoss(),
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
-        loss_fn=None,  # default CE inside Engine
-
-        # shapes
+        # explicit shape checks
         input_channels=input_channels,
         trial_length=trial_len,
         n_patches_labram=n_patches_labram,
         patch_length=patch_len,
-
-        # model extras
-        electrodes=electrodes,
-
-        # perf
-        use_compile=opt_cfg.get("use_compile", False),
-        non_blocking=NON_BLOCKING,
-        pin_memory=PIN_MEMORY,
-        use_amp=USE_AMP,
-
-        # logging
-        use_wandb=exp_cfg.get("log_to_wandb", False),
-        wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
-        wandb_project=exp_cfg.get("wandb_project", "EEG-FM"),
-
-        # checkpoints
-        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
-        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
-        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
-        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
-        checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints" / experiment_name),
-
         # early stopping
         early_stopping=exp_cfg.get("early_stopping", True),
         early_stopping_patience=exp_cfg.get("early_stopping_patience", 10),
         early_stopping_delta=exp_cfg.get("early_stopping_delta", 0.0),
-
         # train-after-stopping
         train_after_stopping=exp_cfg.get("train_after_stopping", False),
         train_after_stopping_epochs=exp_cfg.get("train_after_stopping_epochs", 0),
-
-        # logging-only
-        config_for_logging=config,
     )
 
     if not with_tester:
@@ -343,10 +330,9 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
  
     engine, tester = get_engine(config, with_tester=True)
-    engine.setup_optimizations()
     engine.train()
 
     all_results = tester.test_all_subjects(
-            shots_list= [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
-            n_epochs= 10,
+            shots_list= [0, 1, 2],
+            n_epochs= 2,
         )

@@ -82,17 +82,14 @@ class Engine(BaseEngine):
             device=device,
             model=model,
             electrodes=electrodes,
-
             non_blocking=non_blocking,
             pin_memory=pin_memory,
             use_amp=use_amp,
             use_compile=use_compile,
-        
             use_wandb=use_wandb,
             wandb_entity=wandb_entity,
             wandb_project=wandb_project,
             config_for_logging=config_for_logging,
-
             save_regular_checkpoints=save_regular_checkpoints,
             save_regular_checkpoints_interval=save_regular_checkpoints_interval,
             save_best_checkpoints=save_best_checkpoints,
@@ -102,31 +99,26 @@ class Engine(BaseEngine):
 
         self.n_epochs = int(n_epochs)
 
-        # loaders
+        # data loaders
         self.training_set = training_set
         self.validation_set = validation_set
         self.test_set = test_set
         self.train_after_stopping_set = train_after_stopping_set
 
-        # opt/sched
+        # loss / factories
+        self.loss_fn = loss_fn
         self.optimizer_factory = optimizer_factory
         self.scheduler_factory = scheduler_factory
         self.optimizer = self.optimizer_factory(self.model)
         self.scheduler = self.scheduler_factory(self.optimizer)
-        self.loss_fn = loss_fn or nn.CrossEntropyLoss()
 
-        # shapes
+        # explicit shape checks
         self.input_channels = input_channels
         self.trial_length = trial_length
         self.n_patches_labram = n_patches_labram
         self.patch_length = patch_length
 
-        # metrics/ES
-        self.metrics = Metrics()
-        self.best_val_accuracy = 0.0
-        self.best_val_loss = float("inf")
-        self.best_val_epoch = 0
-        self.patience_counter = 0
+        # early stopping
         self.early_stopping = early_stopping
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_delta = float(early_stopping_delta)
@@ -134,6 +126,13 @@ class Engine(BaseEngine):
         # train-after-stopping
         self.train_after_stopping = train_after_stopping
         self.train_after_stopping_epochs = int(train_after_stopping_epochs)
+
+        # metrics
+        self.metrics = Metrics()
+        self.best_val_accuracy = 0.0
+        self.best_val_loss = float("inf")
+        self.best_val_epoch = 0
+        self.patience_counter = 0
 
         self.assert_dimensions()
 
