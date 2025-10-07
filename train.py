@@ -46,7 +46,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     electrodes = get_ku_dataset_channels() or data_cfg.get("electrodes")
     logger.info(f"USING ELECTRODES: {electrodes}")
 
-# ---------------- model ------------------
+    # ---------------- model ------------------
     model_name = exp_cfg["model"].lower()
     if model is None:
         if model_name == "labram":
@@ -208,30 +208,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     )
 
 
-    # ---------------- optim/sched ------------
-    lr = float(hyperparameters.get("lr", 1e-3))
-    wd = float(hyperparameters.get("weight_decay", 0.0))
-
-    if OPTIMIZER.lower() == "adamw":
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
-    elif OPTIMIZER.lower() == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-    else:
-        raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
-
-    if SCHEDULER == "CosineAnnealingLR":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
-    elif SCHEDULER == "CosineAnnealingWarmRestarts":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0=N_EPOCHS // exp_cfg.get("T_0", 2),
-            T_mult=exp_cfg.get("T_mult", 2),
-        )
-    elif SCHEDULER in (None, "None"):
-        scheduler = None
-    else:
-        raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
-
     # ---------------- factories ------------
     def make_optimizer(model: torch.nn.Module):
         lr = float(hyperparameters.get("lr", 1e-3))
@@ -340,13 +316,8 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
 if __name__ == "__main__":
     with open("hyperparameters.yaml", "r") as f:
         config = yaml.safe_load(f)
-    try:
-        engine, _ = get_engine(config, with_tester=True)
-        engine.setup_optimizations()
-        engine.train()
-    finally:
-        train_ds.close()
-        val_ds.close()
-        test_ds.close()
-        engine.finish()
+ 
+    engine, _ = get_engine(config, with_tester=False)
+    engine.setup_optimizations()
+    engine.train()
 
