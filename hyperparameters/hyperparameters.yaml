@@ -2,7 +2,7 @@
 
 experiment:
   name: null 
-  model: "eegnet" # "deepconvnet" or "eegnet" or "labram". for lomso not used
+  model: "labram" # "deepconvnet" or "eegnet" or "labram". for lomso not used
   seed: 111
   dataset: "KU"
   optimizer: "AdamW"
@@ -12,11 +12,11 @@ experiment:
   device: "cuda"
   log_to_wandb: true
   log_to_wandb_test: false
-  wandb_project: "lomso-experiments" # lomso-experiments
+  wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
   n_subjects: 54
 
   save_regular_checkpoints: false
-  save_regular_checkpoints_interval: 5 # best val will also not save before this
+  save_regular_checkpoints_interval: 1 # best val will also not save before this
   save_final_checkpoint: true
   save_best_checkpoints: true
 
@@ -25,7 +25,7 @@ experiment:
   early_stopping_delta: 0.001
 
 
-  epochs: 25
+  epochs: 20
   train_after_stopping: false # if true, will train the model after early stopping
   train_after_stopping_epochs: 3
 
@@ -43,8 +43,8 @@ data:
   path: "data/preprocessed/KU_mi_labram_preprocessed_normalized.h5"      # <-- set this
   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
   # choose exactly one of the two lines below:
-  # leave_out: [1, 2]             # explicit test subjects 
-  m_leave_out: null #                  # OR: number of subjects to leave out at random, set to null for lomso
+  leave_out: #[1, 2]             # explicit test subjects 
+  m_leave_out: 2 #                  # OR: number of subjects to leave out at random, set to null for lomso
   train_proportion: 0.97   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
   num_classes: 2 
@@ -65,15 +65,18 @@ sampler:
 labram:
   lr: 0.002
   weight_decay: 0.002
-  seed: 111
   lora: true
   adapter_checkpoint_dir: null
+
+deepconvnet:
+  lr: 0.001
+  weight_decay: 0.0001
 
 
 peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
   lora_alpha: 8
-  lora_dropout: 0.5
+  lora_dropout: 0.1
   target_modules: [   
     "proj",
     "qkv",
@@ -91,7 +94,7 @@ eegnet:
 
 test:
   n_epochs: 10
-  shots: [0, 1, 2, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
+  shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 5  # number of repeats for few-shot learning (with different random samples each time)
   models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name

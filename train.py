@@ -277,9 +277,9 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         pin_memory=PIN_MEMORY,
         use_amp=USE_AMP,
         use_compile=opt_cfg.get("use_compile", False),
-        use_wandb=exp_cfg.get("log_to_wandb", False),
+        use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
-        wandb_project="EEG-FM",
+        wandb_project=exp_cfg.get("wandb_project", "EEG-FM"),
         config_for_logging=config,
         save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
         save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
@@ -297,11 +297,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         loss_fn=nn.CrossEntropyLoss(),
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
-        # explicit shape checks
-        input_channels=input_channels,
-        trial_length=trial_len,
-        n_patches_labram=n_patches_labram,
-        patch_length=patch_len,
         # early stopping
         early_stopping=exp_cfg.get("early_stopping", True),
         early_stopping_patience=exp_cfg.get("early_stopping_patience", 10),

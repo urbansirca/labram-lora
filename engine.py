@@ -63,11 +63,7 @@ class Engine(BaseEngine):
         loss_fn: Optional[nn.Module],
         optimizer_factory: Callable[[nn.Module], Optimizer],
         scheduler_factory: Callable[[Optimizer], Optional[_LRScheduler]],
-        # explicit shape checks
-        input_channels: int,
-        trial_length: int,
-        n_patches_labram: Optional[int] = None,
-        patch_length: Optional[int] = None,
+
         # early stopping
         early_stopping: bool = True,
         early_stopping_patience: int = 10,
@@ -112,12 +108,6 @@ class Engine(BaseEngine):
         self.optimizer = self.optimizer_factory(self.model)
         self.scheduler = self.scheduler_factory(self.optimizer)
 
-        # explicit shape checks
-        self.input_channels = input_channels
-        self.trial_length = trial_length
-        self.n_patches_labram = n_patches_labram
-        self.patch_length = patch_length
-
         # early stopping
         self.early_stopping = early_stopping
         self.early_stopping_patience = int(early_stopping_patience)
@@ -133,24 +123,6 @@ class Engine(BaseEngine):
         self.best_val_loss = float("inf")
         self.best_val_epoch = 0
         self.patience_counter = 0
-
-        self.assert_dimensions()
-
-    # assert dimensions of the dataset are correct given model
-    def assert_dimensions(self):
-        """Asserts the dimensions of the dataloader"""
-
-        Xshape = next(iter(self.training_set))[0].shape
-
-        _, C, *rest = Xshape
-        if self.model_str == "eegnet":
-            return
-        elif self.model_str == "labram":
-            assert self.n_patches_labram is not None and self.patch_length is not None, \
-                "labram requires n_patches_labram and patch_length"
-            assert (C, *rest) == (self.input_channels, self.n_patches_labram, self.patch_length), \
-                f"Per-sample shape should be {(self.input_channels, self.n_patches_labram, self.patch_length)} but is {(C, *rest)}"
-
 
     def save_regular_checkpoint(self, joined: bool = False):
         if self.save_regular_checkpoints and self.metrics.epoch % self.save_regular_checkpoints_interval == 0:
@@ -215,6 +187,9 @@ class Engine(BaseEngine):
 
             # ---------------- save regular checkpoints ----------------
             self.save_regular_checkpoint(joined=False)
+            
+            if self.save_best_checkpoints:
+                self.checkpoint(name="best_val_checkpoint")
 
         # ---------------- save the final checkpoint ----------------
         if self.save_final_checkpoint:
@@ -262,10 +237,7 @@ class Engine(BaseEngine):
             logger.info(
                 f"New best val_loss: {self.best_val_loss:.4f}, val_accuracy: {self.best_val_accuracy:.4f}, patience: {self.patience_counter}/{self.early_stopping_patience}"
             )
-
-            # Save best model
-            if self.save_best_checkpoints:
-                self.checkpoint(name="best_val_checkpoint")
+            
 
         else:
             self.patience_counter += 1

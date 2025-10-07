@@ -75,8 +75,8 @@ def run_lomso(
     results = {}
 
     lomso_root = Path("lomso")
-    if lomso_root.exists():
-        raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
+    # if lomso_root.exists():
+    #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
     for model_name in models:
@@ -98,8 +98,8 @@ def run_lomso(
             dest = lomso_root / model_name / experiment_name
             dest.mkdir(parents=True, exist_ok=True)
 
-            if any(dest.iterdir()):
-                raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
+            # if any(dest.iterdir()):
+            #     raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
 
             # create engine and tester
             engine, tester = get_engine(
@@ -116,7 +116,6 @@ def run_lomso(
             logger.info(f"Checkpoints and results will be saved to {str(engine.checkpoint_root)}")
 
             # train
-            engine.setup_optimizations()
             engine.train()
 
             # run tests (tester.test_all_subjects uses the split's test subjects)
