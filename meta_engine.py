@@ -59,6 +59,7 @@ class MetaEngine:
         device: Union[str, torch.device],
         meta_iterations: int,
         validate_every: int,
+        validate_meta_every: int,
         # --- datasets / splits ---
         train_ds,
         val_ds,
@@ -105,7 +106,6 @@ class MetaEngine:
         val_episodes_per_subject: int = None,
         n_epochs_supervised: int = 100,
         meta_iters_per_meta_epoch: int = 100,
-        validate_meta_every: int = 0,
         supervised_train_batch_size: int = 250,
         supervised_eval_batch_size: int = 250,
         # --- extra (supervised) factories; default to the meta factories ---
@@ -141,6 +141,7 @@ class MetaEngine:
         self.inner_steps = int(inner_steps)
         self.inner_lr = float(inner_lr)
         self.validate_every = int(validate_every)
+        self.validate_meta_every = int(validate_meta_every)
 
         # episode indices (explicit run_size)
         self.train_epi = build_episode_index(self.train_ds, run_size=run_size)
@@ -733,7 +734,7 @@ class MetaEngine:
                 # optional intra-block meta validation/logging/checkpointing
                 if self.validate_meta_every > 0 and (j % self.validate_meta_every == 0):
                     self.meta_validate_epoch()
-                    self.log_metrics()
+                    # self.log_metrics()
 
             # end-of-block meta validation if user asked for "only at meta epoch end"
             self.meta_validate_epoch()

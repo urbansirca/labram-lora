@@ -1,7 +1,7 @@
 
 
 experiment:
-  model: "deepconvnet"
+  model: "labram"
   seed: 111
   dataset: "KU"
   optimizer: "AdamW"
@@ -21,6 +21,7 @@ experiment:
   early_stopping_patience: 5
   early_stopping_delta: 0.001
 
+
   # train after stopping
   epochs: 100
   train_after_stopping: false # if true, will train the model after early stopping
@@ -36,7 +37,7 @@ optimizations:
 
 
 data:
-  path: "data/preprocessed/KU_mi_labram_preprocessed.h5"      # <-- set this
+  path: "data/preprocessed/KU_mi_labram_preprocessed_normalized.h5"      # <-- set this
   electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
     "T7","C3","CZ","C4","T8","TP9","CP5","CP1","CP2","CP6","TP10","P7","P3","PZ",
     "P4","P8","PO9","O1","OZ","O2","PO10","FC3","FC4","C5","C1","C2","C6","CP3",
@@ -69,11 +70,13 @@ labram:
   weight_decay: 0.002
   seed: 42
   lora: true
+  adapter_checkpoint_dir: null
+
 
 peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
-  lora_alpha: 32
-  lora_dropout: 0.5
+  lora_alpha: 16
+  lora_dropout: 0.1
   # target_modules: [
   #   "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
   #   "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",

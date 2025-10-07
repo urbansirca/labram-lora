@@ -3,7 +3,7 @@ experiment:
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  meta_iterations: 1200
+  meta_iterations: 6
   validate_every: 30
   optimizer: AdamW       # Adam | AdamW
   scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
@@ -25,7 +25,7 @@ experiment:
 
 
 data:
-  path: data/preprocessed/KU_mi_labram_preprocessed.h5
+  path: data/preprocessed/KU_mi_labram_preprocessed_normalized.h5
   subjects: #[1,2,3,4]   # optional; else n_subjects used
   leave_out: [1,2,3,4,5,6]                # test set subjects
   # m_leave_out: 2                  # optional multi-LOO size
@@ -39,7 +39,7 @@ data:
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
-  meta_batch_size: 20
+  meta_batch_size: 54
   k_support: 5
   q_query: 300         # or null for “all remaining”
   q_eval: 300
@@ -50,15 +50,13 @@ meta:
   val_episodes_per_subject: 1
 
 supervised:
-  train_batch_size: 250
-  eval_batch_size: 250
+  train_batch_size: 125
+  eval_batch_size: 125
   n_epochs_supervised: 20
-  meta_iters_per_meta_epoch: 10
+  meta_iters_per_meta_epoch: 1
   validate_meta_every: 0
   drop_last: false
-  run_size: 40       # granularity for episode indexing
-  clip_grad_norm: null # torch.nn.utils.clip_grad_norm_
-  run_size: 40       # granularity for episode indexing
+  run_size: 100       # granularity for episode indexing
   clip_grad_norm: null # torch.nn.utils.clip_grad_norm_
   val_episodes_per_subject: 1
 
@@ -78,12 +76,12 @@ labram:
   head_weight_decay: 5e-4
   sup_lr: 2e-4
   sup_wd: 5e-4
-  adapter_checkpoint_dir: "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/final_checkpoint_e60_acc0.788"
+  adapter_checkpoint_dir: # "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/final_checkpoint_e60_acc0.788"
 
 peft_config:
   r: 2
-  lora_alpha: 32
-  lora_dropout: 0.5
+  lora_alpha: 16
+  lora_dropout: 0.1
   target_modules: ["qkv", "fc1", "proj"]
 
 eegnet:
