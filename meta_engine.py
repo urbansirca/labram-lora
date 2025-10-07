@@ -107,17 +107,14 @@ class MetaEngine(BaseEngine):
             device=device,
             model=model,
             electrodes=electrodes,
-
             non_blocking=non_blocking,
             pin_memory=pin_memory,
             use_amp=use_amp,
             use_compile=use_compile,
-        
             use_wandb=use_wandb,
             wandb_entity=wandb_entity,
             wandb_project=wandb_project,
             config_for_logging=config_for_logging,
-
             save_regular_checkpoints=save_regular_checkpoints,
             save_regular_checkpoints_interval=save_regular_checkpoints_interval,
             save_best_checkpoints=save_best_checkpoints,
@@ -155,8 +152,7 @@ class MetaEngine(BaseEngine):
         self.val_epi = build_episode_index(self.val_ds, run_size=run_size)
         self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
 
-        # misc
-        self.metrics = Metrics()
+        # Seed
         self.rng = random.Random(int(seed))
         self.seed = seed
         self.clip_grad_norm = clip_grad_norm
@@ -176,6 +172,9 @@ class MetaEngine(BaseEngine):
         self.supervised_eval_batch_size = supervised_eval_batch_size
         self.sup_optimizer = supervised_optimizer_factory(allow_params)
         self.sup_scheduler = supervised_scheduler_factory(self.sup_optimizer)
+
+        # metrics
+        self.metrics = Metrics()
         
 
     def _grad_norm(self, params) -> float:
