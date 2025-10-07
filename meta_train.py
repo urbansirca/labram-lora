@@ -367,7 +367,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 # -------- run --------------------------
 if __name__ == "__main__":
     # -------- config -----------
-    with open("meta_hyperparameters.yaml", "r") as f:
+    with open("hyperparameters/meta_hyperparameters.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     engine, tester = get_meta_engine(config, with_tester=True)
@@ -384,46 +384,3 @@ if __name__ == "__main__":
         engine.train_ds.close()
         engine.val_ds.close()
         engine.test_ds.close()
-
-
-
-# """
-# Exploratory script for KU Motor Imagery dataset (.h5)
-# """
-
-# import h5py
-# import numpy as np
-
-# # Path to your preprocessed dataset
-# # path = "/home/lovro/BCI/labram-lora/data/preprocessed/ABC_labram_preprocessed.h5"
-
-# path = "data/preprocessed/KU_mi_labram_preprocessed_normalized.h5"
-# with h5py.File(path, "r") as f:
-#     # List all subjects
-#     subjects = list(f.keys())
-#     print(f"Number of subjects: {len(subjects)}")
-#     print("Example subject IDs:", subjects[:5])
-
-#     # Pick first subject
-#     subj = subjects[0]
-#     X = f[subj]['X'][:]
-#     Y = f[subj]['Y'][:]
-
-#     print(f"\nSubject: {subj}")
-#     print("  X shape:", X.shape)  # (trials, channels, time)
-#     print("  Y shape:", Y.shape)  # (trials,)
-#     print("  Channels:", X.shape[1])
-#     print("  Time samples per trial:", X.shape[2])
-
-#     # Label distribution
-#     unique, counts = np.unique(Y, return_counts=True)
-#     print("  Label distribution:", dict(zip(unique, counts)))
-
-#     # Check basic stats of signals
-#     print("  Signal mean:", np.mean(X))
-#     print("  Signal std:", np.std(X))
-
-#     # Peek into first trial
-#     print("\nFirst trial shape:", X[0].shape)
-#     print("First trial label:", Y[0])
-

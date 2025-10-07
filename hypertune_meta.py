@@ -39,7 +39,7 @@ def objective(trial):
     logger.info(f"=" * 60)
 
     # Load configs
-    with open("meta_hyperparameters.yaml", "r") as f:
+    with open("hyperparameters/meta_hyperparameters.yaml", "r") as f:
         base_config = yaml.safe_load(f)
 
     cfg = copy.deepcopy(base_config)

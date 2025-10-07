@@ -338,7 +338,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
 
     # ---------------- run --------------------
 if __name__ == "__main__":
-    with open("hyperparameters.yaml", "r") as f:
+    with open("hyperparameters/hyperparameters.yaml", "r") as f:
         config = yaml.safe_load(f)
  
     engine, tester = get_engine(config, with_tester=True)

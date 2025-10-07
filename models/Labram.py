@@ -131,15 +131,3 @@ def load_labram_with_adapter(adapter_dir: str, device="cpu"):
 
     # model.eval()  # if you're going to run inference
     return model
-
-
-if __name__ == "__main__":
-    with open("hyperparameters.yaml", "r") as f:
-        hyperparameters = yaml.safe_load(f)
-
-    print(f"Hyperparameters: {hyperparameters}")
-    model = load_labram(
-        lora=False,  # hyperparameters["labram"]["lora"],
-        # peft_config=hyperparameters["peft_config"],
-    )
-    print(f"Model: {model}")
