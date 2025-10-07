@@ -4,14 +4,16 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, Tuple
 import wandb
-
+import random
 import torch
 import torch.nn as nn
+from torch.func import functional_call
 import pandas as pd
 from meta_helpers import (
     sample_support,
     sample_query,
     fetch_by_indices,
+    build_episode_index,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,56 +22,73 @@ logger = logging.getLogger(__name__)
 class TestEngine:
     def __init__(
         self,
-        meta_engine,
-        optimizer_factory: Optional[Callable[[List], torch.optim.Optimizer]] = None,
+        engine,
+        test_ds,
         use_wandb: bool = False,
         wandb_prefix: str = "test",
-        experiment_name: str = "test",
+        run_size: int = 100, 
     ):
-        """
-        Test class for evaluating model adaptation on test subjects.
+        self.engine = engine
+        self.optimizer_factory = engine.optimizer_factory
+        
+        self.rng = random.Random(int(42)) #TODO: get it from engine maybe 
+        self.S_test = test_ds.subject_ids
+        self.test_ds = test_ds
+        self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
+        self._allow_trainable = {n for n, p in self.engine.model.named_parameters() if p.requires_grad}
 
-        Args:
-            meta_engine: MetaEngine instance with trained model
-            optimizer_factory: Factory for creating optimizers for adaptation.
-                             If None, uses meta_engine.optimizer_factory
-            use_wandb: Whether to log results to wandb
-            wandb_prefix: Prefix for wandb logging keys
-        """
-        self.meta_engine = meta_engine
-        self.optimizer_factory = optimizer_factory or meta_engine.optimizer_factory
         self.use_wandb = use_wandb
         self.wandb_prefix = wandb_prefix
-        self.rng = meta_engine.rng
-        self.experiment_name = experiment_name
-
-        self.save_dir = Path("results/test/{}".format(self.experiment_name))
+        self.save_dir = Path("results/test/{}".format(self.engine.experiment_name))
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self._t0 = time.time()
 
+    
+    def _forward_with(self, params_dict, x):
+        if self.engine.use_amp:
+            with torch.autocast(device_type=self.device.type):
+                return functional_call(
+                    self.engine.model,
+                    params_dict,
+                    args=(),
+                    kwargs={"x": x, "electrodes": self.engine.electrodes},
+                )
+        else:
+            return functional_call(
+                self.engine.model,
+                params_dict,
+                args=(),
+                kwargs={"x": x, "electrodes": self.engine.electrodes},
+            )
+        
+    def _clone_as_leaf(self, params):
+        return [
+            torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in params
+        ]
+
     def _zero_shot_evaluate(self, subject_id: int) -> Dict[str, float]:
         """Evaluate model on subject without any adaptation."""
-        self.meta_engine.model.eval()
+        self.engine.model.eval()
 
         # Get all available trials for this subject as query
         # Use the EpisodeIndex's subj_local_to_global mapping
         available_trials = list(
-            range(len(self.meta_engine.test_epi.subj_local_to_global[subject_id]))
+            range(len(self.test_epi.subj_local_to_global[subject_id]))
         )
 
         # print(f"Available trials: {len(available_trials)}")
 
         Xq, yq = fetch_by_indices(
-            self.meta_engine.test_ds,
-            self.meta_engine.test_epi,
+            self.test_ds,
+            self.test_epi,
             subject_id,
             available_trials,
-            self.meta_engine.device,
-            self.meta_engine.non_blocking,
+            self.engine.device,
+            self.engine.non_blocking,
         )
 
         with torch.no_grad():
-            logits = self.meta_engine._forward(Xq)
+            logits = self.engine._forward(Xq)
             loss = nn.functional.cross_entropy(logits, yq)
             accuracy = (logits.argmax(1) == yq).float().mean()
 
@@ -109,13 +128,13 @@ class TestEngine:
             Tuple of (support_indices, query_indices)
         """
         # Get all available trials for this subject
-        all_trials = self.meta_engine.test_epi.subj_local_to_global[subject_id]
+        all_trials = self.test_epi.subj_local_to_global[subject_id]
 
         # Group trials by class
         trials_by_class = {}
         for trial_idx in all_trials:
             # Get the class for this trial by looking up in the dataset
-            x, y, sid = self.meta_engine.test_ds[int(trial_idx)]
+            x, y, sid = self.test_ds[int(trial_idx)]
             class_id = y.item()
 
             if class_id not in trials_by_class:
@@ -149,7 +168,7 @@ class TestEngine:
         self, subject_id: int, n_shots: int, n_epochs: int
     ) -> Dict[str, float]:
         """Adapt model on n_shots and evaluate on remaining trials."""
-        self.meta_engine.model.eval()
+        self.engine.model.eval()
 
         # Get support and query trials
         sup_idx, que_idx = self._get_support_and_query_trials(subject_id, n_shots)
@@ -159,33 +178,33 @@ class TestEngine:
 
         # Fetch data
         Xs, ys = fetch_by_indices(
-            self.meta_engine.test_ds,
-            self.meta_engine.test_epi,
+            self.test_ds,
+            self.test_epi,
             subject_id,
             sup_idx,
-            self.meta_engine.device,
-            self.meta_engine.non_blocking,
+            self.engine.device,
+            self.engine.non_blocking,
         )
         Xq, yq = fetch_by_indices(
-            self.meta_engine.test_ds,
-            self.meta_engine.test_epi,
+            self.test_ds,
+            self.test_epi,
             subject_id,
             que_idx,
-            self.meta_engine.device,
-            self.meta_engine.non_blocking,
+            self.engine.device,
+            self.engine.non_blocking,
         )
 
         # Get trainable parameters
         base_named = [
             (n, p)
-            for n, p in self.meta_engine.model.named_parameters()
-            if n in self.meta_engine._allow_trainable
+            for n, p in self.engine.model.named_parameters()
+            if n in self._allow_trainable
         ]
         base_names = [n for n, _ in base_named]
         base_params = [p for _, p in base_named]
 
         # Clone parameters for adaptation
-        fast = self.meta_engine._clone_as_leaf(base_params)
+        fast = self._clone_as_leaf(base_params)
 
         # Create optimizer for adaptation
         adapter_optimizer = self.optimizer_factory(fast)
@@ -203,7 +222,7 @@ class TestEngine:
             fast_dict = dict(zip(base_names, fast))
 
             # Forward pass on support set
-            logits_s = self.meta_engine._forward_with(fast_dict, Xs)
+            logits_s = self._forward_with(fast_dict, Xs)
             loss_s = nn.functional.cross_entropy(logits_s, ys)
             accuracy_s = (logits_s.argmax(1) == ys).float().mean()
 
@@ -217,7 +236,7 @@ class TestEngine:
             # Evaluate on query set
             fast_dict = dict(zip(base_names, fast))
             with torch.no_grad():
-                logits_q = self.meta_engine._forward_with(fast_dict, Xq)
+                logits_q = self._forward_with(fast_dict, Xq)
                 loss_q = nn.functional.cross_entropy(logits_q, yq)
                 accuracy_q = (logits_q.argmax(1) == yq).float().mean()
 
@@ -225,7 +244,7 @@ class TestEngine:
             accuracy_q_list.append(accuracy_q.item())
 
             if self.use_wandb:
-                self.meta_engine.wandb_run.log(
+                self.engine.wandb_run.log(
                     {
                         f"{self.wandb_prefix}/s{subject_id}/{n_shots}shots/{epoch}epoch/loss_s": loss_s.item(),
                         f"{self.wandb_prefix}/s{subject_id}/{n_shots}shots/{epoch}epoch/accuracy_s": accuracy_s.item(),
@@ -303,7 +322,7 @@ class TestEngine:
             else:
                 # Check if we have enough trials for this many shots
                 available_trials = len(
-                    self.meta_engine.test_epi.subj_local_to_global[subject_id]
+                    self.test_epi.subj_local_to_global[subject_id]
                 )
                 assert (
                     n_shots <= available_trials
@@ -342,7 +361,6 @@ class TestEngine:
         self,
         shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
         n_epochs: int = 10,
-        experiment_name: str = "test",
     ) -> Dict[int, pd.DataFrame]:
         """
         Test adaptation for all test subjects.
@@ -356,13 +374,13 @@ class TestEngine:
             Dictionary mapping subject_id -> DataFrame of results
         """
         logger.info(
-            f"Testing {len(self.meta_engine.S_test)} subjects with {n_epochs} epochs"
+            f"Testing {len(self.S_test)} subjects with {n_epochs} epochs"
         )
 
         all_results = {}
         aggregated_results = []
 
-        for subject_id in self.meta_engine.S_test:
+        for subject_id in self.S_test:
             start_time = time.time()
 
             # Test this subject
@@ -387,13 +405,13 @@ class TestEngine:
                     json.dump(subject_results, f, indent=2)
 
             # Log to wandb if requested
-            if self.use_wandb and self.meta_engine.wandb_run is not None:
+            if self.use_wandb and self.engine.wandb_run is not None:
                 # Log individual subject metrics
                 for shots in shots_list:
                     if shots in subject_df.index:
                         final_acc = subject_df.loc[shots, "final_accuracy"]
                         if not pd.isna(final_acc):
-                            self.meta_engine.wandb_run.log(
+                            self.engine.wandb_run.log(
                                 {
                                     f"{self.wandb_prefix}/subject_{subject_id}/shots_{shots}/final_accuracy": final_acc
                                 }
@@ -417,7 +435,7 @@ class TestEngine:
             logger.info(f"Subject {subject_id} completed in {elapsed:.2f}s")
 
         # Log aggregated results to wandb (simplified - only summary stats)
-        if self.use_wandb and self.meta_engine.wandb_run is not None:
+        if self.use_wandb and self.engine.wandb_run is not None:
             agg_df = pd.DataFrame(aggregated_results)
 
             # Only log final summary statistics, not per-subject details
@@ -429,7 +447,7 @@ class TestEngine:
                     n_subjects = len(subset)
 
                     # Log only the essential summary metrics
-                    self.meta_engine.wandb_run.log(
+                    self.engine.wandb_run.log(
                         {
                             f"{self.wandb_prefix}/summary/shots_{shots}/mean_accuracy": mean_acc,
                             f"{self.wandb_prefix}/summary/shots_{shots}/std_accuracy": std_acc,
@@ -452,7 +470,7 @@ class TestEngine:
                     )
 
             if summary_table:
-                self.meta_engine.wandb_run.log(
+                self.engine.wandb_run.log(
                     {
                         f"{self.wandb_prefix}/summary_table": wandb.Table(
                             data=[
@@ -477,8 +495,8 @@ class TestEngine:
         # Save aggregated results
         if self.save_dir:
             summary = {
-                "experiment_name": self.meta_engine.experiment_name,
-                "test_subjects": self.meta_engine.S_test,
+                "experiment_name": self.engine.experiment_name,
+                "test_subjects": self.S_test,
                 "shots_list": shots_list,
                 "n_epochs": n_epochs,
                 "aggregated_results": aggregated_results,
@@ -498,7 +516,7 @@ class TestEngine:
         logger.info(f"Saved plot to {self.save_dir / 'plot_final_accuracy.png'}")
 
         logger.info(
-            f"Testing completed for all {len(self.meta_engine.S_test)} subjects"
+            f"Testing completed for all {len(self.S_test)} subjects"
         )
         return all_results
 
@@ -597,44 +615,3 @@ class TestEngine:
         return fig, ax
 
 
-# # Example usage function
-# def run_adaptation_test(
-#     meta_engine,
-#     shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
-#     n_epochs: int = 10,
-#     optimizer_factory: Optional[Callable] = None,
-#     save_dir: Optional[str] = None,
-#     use_wandb: bool = False,
-# ):
-#     """
-#     Convenience function to run adaptation testing.
-
-#     Args:
-#         meta_engine: Trained MetaEngine instance
-#         shots_list: List of shot counts to test
-#         n_epochs: Number of adaptation epochs (single value)
-#         optimizer_factory: Factory for adaptation optimizer (default: Adam with lr=0.001)
-#         save_dir: Directory to save results
-#         use_wandb: Whether to log to wandb
-
-#     Returns:
-#         Dictionary mapping subject_id -> DataFrame of results
-#     """
-#     if optimizer_factory is None:
-#         # Default optimizer factory for adaptation
-#         def default_optimizer_factory(params):
-#             return torch.optim.Adam(params, lr=0.001)
-
-#         optimizer_factory = default_optimizer_factory
-
-#     tester = Test(
-#         meta_engine=meta_engine,
-#         optimizer_factory=optimizer_factory,
-#         use_wandb=use_wandb,
-#     )
-
-#     return tester.test_all_subjects(
-#         shots_list=shots_list,
-#         n_epochs=n_epochs,
-#         save_dir=save_dir,
-#     )

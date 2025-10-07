@@ -355,11 +355,11 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         return engine
 
     tester = TestEngine(
-        engine,
-        optimizer_factory=make_optimizer_tester,
+        engine=engine,
+        test_ds=test_ds,
         use_wandb=exp_cfg.get("log_to_wandb", False),
         wandb_prefix="test",
-        experiment_name=experiment_name,
+        run_size = 100,
     )
 
     return engine, tester
@@ -375,9 +375,8 @@ if __name__ == "__main__":
     try:
         # engine.train_alternating()
         all_results = tester.test_all_subjects(
-            shots_list=test_cfg.get("shots_list", [0, 1, 2, 3, 4, 5, 10, 20, 50, 100]),
-            n_epochs=test_cfg.get("n_epochs", 10),
-            experiment_name=tester.experiment_name,
+            shots_list= [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
+            n_epochs= 10,
         )
     finally:
         engine.train_ds.close()
