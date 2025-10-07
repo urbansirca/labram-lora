@@ -213,12 +213,36 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         lr = float(hyperparameters.get("lr", 1e-3))
         wd = float(hyperparameters.get("weight_decay", 0.0))
 
-        if OPTIMIZER.lower() == "adamw":
-            return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
-        elif OPTIMIZER.lower() == "adam":
-            return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+        # --- TEMPORARY PATCH -----------------------------------------------------
+        # In the few-shot / meta-testing path, we call make_optimizer(fast)
+        # where `fast` is a *list of tensors* cloned from model parameters,
+        # not an nn.Module.  Normally this factory assumes a real module and
+        # does model.parameters(), which fails for a plain list.
+        #
+        # To keep both code paths working for now, we detect this case and
+        # pass the list directly to the optimizer constructor.
+        # (PyTorch optimizers accept an iterable of tensors.)
+        #
+        # TODO(lovro): clean this up once we separate inner-loop and outer-loop
+        # optimizers — the adaptation step should have its own lr/wd settings
+        # instead of reusing training hyperparameters.
+        # ------------------------------------------------------------------------
+
+        if isinstance(model, list):
+
+            if OPTIMIZER.lower() == "adamw":
+                return torch.optim.AdamW(model, lr=lr, weight_decay=wd)
+            elif OPTIMIZER.lower() == "adam":
+                return torch.optim.Adam(model, lr=lr, weight_decay=wd)
+            else:
+                raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
         else:
-            raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
+            if OPTIMIZER.lower() == "adamw":
+                return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
+            elif OPTIMIZER.lower() == "adam":
+                return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+            else:
+                raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 
 
     def make_scheduler(optimizer: torch.optim.Optimizer):
@@ -303,21 +327,25 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     if not with_tester:
         return engine, None
     
-    # tester = TestEngine( #TODO: doesnt work without meta_engine
-    #     engine,
-    #     optimizer_factory=make_optimizer,
-    #     use_wandb=exp_cfg.get("log_to_wandb", False),
-    #     wandb_prefix="test",
-    #     experiment_name=experiment_name,
-    # )
-    return engine, None
+    tester = TestEngine(
+        engine=engine,
+        test_ds=test_ds,
+        use_wandb=exp_cfg.get("log_to_wandb", False),
+        wandb_prefix="test",
+        run_size = 100,
+    )
+    return engine, tester
 
     # ---------------- run --------------------
 if __name__ == "__main__":
     with open("hyperparameters.yaml", "r") as f:
         config = yaml.safe_load(f)
  
-    engine, _ = get_engine(config, with_tester=False)
+    engine, tester = get_engine(config, with_tester=True)
     engine.setup_optimizations()
     engine.train()
 
+    all_results = tester.test_all_subjects(
+            shots_list= [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
+            n_epochs= 10,
+        )
