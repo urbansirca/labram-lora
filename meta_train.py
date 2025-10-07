@@ -5,6 +5,7 @@ from typing import Iterable
 
 import yaml
 import torch
+import torch.nn as nn
 
 from meta_engine import MetaEngine
 from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
@@ -42,48 +43,47 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
 
     # perf
-    USE_AMP = bool(opt_cfg.get("use_amp", True))
-    USE_COMPILE = bool(opt_cfg.get("use_compile", False))
-    NON_BLOCKING = bool(opt_cfg.get("non_blocking", True))
-    PIN_MEMORY = bool(opt_cfg.get("pin_memory", False))
+    USE_AMP = bool(opt_cfg.get("use_amp"))
+    USE_COMPILE = bool(opt_cfg.get("use_compile"))
+    NON_BLOCKING = bool(opt_cfg.get("non_blocking"))
+    PIN_MEMORY = bool(opt_cfg.get("pin_memory"))
 
-    chans = int(data_cfg.get("input_channels", 62))
-    samples = int(data_cfg.get("samples", 800))
-    classes = int(data_cfg.get("num_classes", 2))
+    n_channels = int(data_cfg.get("n_channels"))
+    samples = int(data_cfg.get("samples"))
+    classes = int(data_cfg.get("num_classes"))
     # -------- model ------------
     model_name = exp_cfg["model"].lower()
     if model_name == "labram":
         
         if labram_hp.get("adapter_checkpoint_dir"):
             model = load_labram_with_adapter(
-                labram_hp.get("adapter_checkpoint_dir", "weights/checkpoints/labram_adapter")
+                labram_hp.get("adapter_checkpoint_dir")
             )
         else:
             model = load_labram(
-                lora=labram_hp.get("lora", True),
+                lora=labram_hp.get("lora"),
                 peft_config=peft_cfg,
         )
 
         model_str = "labram"
 
-        samples = int(data_cfg.get("samples", 800)) // data_cfg.get("n_patches_labram", 4)  # override for Labram
-
+        samples = int(data_cfg.get("samples")) // data_cfg.get("n_patches_labram")
     elif model_name == "eegnet":
         model = EEGNet(
             nb_classes=classes,
-            Chans=chans,
+            Chans=n_channels,
             Samples=samples,
-            dropoutRate=eegnet_hp.get("dropoutRate", 0.5),
-            kernLength=eegnet_hp.get("kernLength", 64),
-            F1=eegnet_hp.get("F1", 8),
-            D=eegnet_hp.get("D", 2),
-            F2=eegnet_hp.get("F2", eegnet_hp.get("F1", 8) * eegnet_hp.get("D", 2)),
+            dropoutRate=eegnet_hp.get("dropoutRate"),
+            kernLength=eegnet_hp.get("kernLength"),
+            F1=eegnet_hp.get("F1"),
+            D=eegnet_hp.get("D"),
+            F2=eegnet_hp.get("F2"),
         )
         model_str = "eegnet"
 
     elif model_name == "deepconvnet":
         model = DeepConvNet(
-            in_chans=chans,
+            in_chans=n_channels,
             n_classes=classes,
             input_time_length=samples,
             final_conv_length="auto",
@@ -102,11 +102,11 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     logger.info(f"Experiment name: {experiment_name}")
 
     # -------- device & seeds ---
-    if exp_cfg.get("device", "cuda") == "mps":
+    if exp_cfg.get("device") == "mps":
         DEVICE = torch.device("mps")
     else:
         DEVICE = torch.device(
-            exp_cfg.get("device", "cuda") if torch.cuda.is_available() else "cpu"
+            exp_cfg.get("device") if torch.cuda.is_available() else "cpu"
         )
     logger.info(f"USING DEVICE: {DEVICE}")
 
@@ -117,8 +117,8 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     # -------- data/splits ------
     DATASET_PATH = data_cfg["path"]
-    SUBJECT_IDS = data_cfg.get("subjects") or range(1, exp_cfg.get("n_subjects", 9) + 1)
-    TRAIN_PROP = float(data_cfg.get("train_proportion", 0.90))
+    SUBJECT_IDS = data_cfg.get("subjects") or range(1, exp_cfg.get("n_subjects") + 1)
+    TRAIN_PROP = float(data_cfg.get("train_proportion"))
     LEAVE_OUT = data_cfg.get("leave_out")
     M_LEAVE_OUT = data_cfg.get("m_leave_out")
 
@@ -141,20 +141,20 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     # -------- optim/sched factories ----
     if model_str == 'deepconvnet':
-        lr = float(deepconvnet_hp.get("lr", 1e-3))
-        wd = float(deepconvnet_hp.get("weight_decay", 0.0))
-        sup_lr = float(deepconvnet_hp.get("sup_lr", 1e-3))
-        sup_wd = float(deepconvnet_hp.get("sup_wd", 0.0))
+        lr = float(deepconvnet_hp.get("lr"))
+        wd = float(deepconvnet_hp.get("weight_decay"))
+        sup_lr = float(deepconvnet_hp.get("sup_lr"))
+        sup_wd = float(deepconvnet_hp.get("sup_wd"))
     elif model_str == 'labram':
-        lr = float(labram_hp.get("lr", 1e-3))
-        wd = float(labram_hp.get("weight_decay", 0.0))
-        sup_lr = float(labram_hp.get("sup_lr", 1e-3))
-        sup_wd = float(labram_hp.get("sup_wd", 0.0))
+        lr = float(labram_hp.get("lr"))
+        wd = float(labram_hp.get("weight_decay"))
+        sup_lr = float(labram_hp.get("sup_lr"))
+        sup_wd = float(labram_hp.get("sup_wd"))
     elif model_str == 'eegnet':
-        lr = float(eegnet_hp.get("lr", 1e-3))
-        wd = float(eegnet_hp.get("weight_decay", 0.0))
-        sup_lr = float(eegnet_hp.get("sup_lr", 1e-3))
-        sup_wd = float(eegnet_hp.get("sup_wd", 0.0))
+        lr = float(eegnet_hp.get("lr"))
+        wd = float(eegnet_hp.get("weight_decay"))
+        sup_lr = float(eegnet_hp.get("sup_lr"))
+        sup_wd = float(eegnet_hp.get("sup_wd"))
     else:
         raise ValueError(f"Unsupported model: {model_str}")
 
@@ -183,9 +183,9 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
                     lora_or_no_decay.append(p)
 
             base = (labram_hp or eegnet_hp) or {}
-            head_lr = float(base.get("head_lr", base.get("lr", 1e-3)))
-            head_wd = float(base.get("head_weight_decay", base.get("weight_decay", 0.0)))
-            lora_lr = float(base.get("lora_lr", base.get("lr", 1e-3)))
+            head_lr = float(base.get("head_lr"))
+            head_wd = float(base.get("head_weight_decay"))
+            lora_lr = float(base.get("lora_lr"))
 
             groups = []
             if head:
@@ -206,13 +206,13 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     def make_scheduler(opt: torch.optim.Optimizer):
         if SCHEDULER == "CosineAnnealingLR":
-            return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min", 0)))
+            return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min")))
         elif SCHEDULER == "CosineAnnealingWarmRestarts":
             return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 opt,
-                T_0=int(exp_cfg.get("T_0", 100)),
-                T_mult=int(exp_cfg.get("T_mult", 2)),
-                eta_min=float(exp_cfg.get("eta_min", 1e-5)),
+                T_0=int(exp_cfg.get("T_0")),
+                T_mult=int(exp_cfg.get("T_mult")),
+                eta_min=float(exp_cfg.get("eta_min")),
             )
         elif SCHEDULER in (None, "None"):
             return None
@@ -255,99 +255,90 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     # -------- episode knobs ---------------
     K_SUPPORT = int(meta_cfg["k_support"])
     Q_QUERY = meta_cfg.get("q_query")  # can be None
-    Q_EVAL = meta_cfg.get("q_eval", None)
+    Q_EVAL = meta_cfg.get("q_eval")
     INNER_STEPS = int(meta_cfg["inner_steps"])
     INNER_LR = float(meta_cfg["inner_lr"])
     RUN_SIZE = int(meta_cfg["run_size"])
-    val = meta_cfg.get("clip_grad_norm", None)
+    val = meta_cfg.get("clip_grad_norm")
     CLIP_GRAD = float(val) if val is not None else None
     VAL_EPISODES_PER_SUBJECT = int(meta_cfg["val_episodes_per_subject"])
 
     # labram-specific shaping knobs used by MetaEngine’s fetch path
-    n_patches_labram = int(data_cfg.get("n_patches_labram", 4))
-    patch_len = int(data_cfg.get("patch_length", 200))
-    n_channels = int(data_cfg.get("n_channels", 62))
+    n_patches_labram = int(data_cfg.get("n_patches_labram"))
+    patch_len = int(data_cfg.get("patch_length"))
+    
     electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
 
     ### supervised knobs
     supervised_cfg = config.get("supervised", {})
-    n_epochs_supervised = int(supervised_cfg.get("n_epochs_supervised", 100))
-    meta_iters_per_meta_epoch = int(supervised_cfg.get("meta_iters_per_meta_epoch", 100))
-    supervised_train_batch_size = int(supervised_cfg.get("train_batch_size", 250))
-    supervised_eval_batch_size = int(supervised_cfg.get("eval_batch_size", 250))
+    n_epochs_supervised = int(supervised_cfg.get("n_epochs_supervised"))
+    meta_iters_per_meta_epoch = int(supervised_cfg.get("meta_iters_per_meta_epoch"))
+    supervised_train_batch_size = int(supervised_cfg.get("train_batch_size"))
+    supervised_eval_batch_size = int(supervised_cfg.get("eval_batch_size"))
 
     # warm up lazy bits (esp. labram)
     model = model.to(DEVICE)
     with torch.no_grad():
         if model_str == "labram":
             _ = model(
-                x=torch.zeros(1, chans, n_patches_labram, samples, device=DEVICE),
+                x=torch.zeros(1, n_channels, n_patches_labram, samples, device=DEVICE),
                 electrodes=electrodes,
             )
         else:
-            _ = model(x=torch.zeros(1, chans, samples, device=DEVICE))
+            _ = model(x=torch.zeros(1, n_channels, samples, device=DEVICE))
 
     # -------- engine -----------------------
     engine = MetaEngine(
-        # core
-        model=model,
+        # --- BASE ---
         model_str=model_str,
         experiment_name=experiment_name,
         device=DEVICE,
+        model=model,
+        electrodes=electrodes,
+        non_blocking=NON_BLOCKING,
+        pin_memory=PIN_MEMORY,
+        use_compile=USE_COMPILE,
+        use_amp=USE_AMP,
+        use_wandb=exp_cfg.get("log_to_wandb"),
+        wandb_entity=exp_cfg.get("wandb_entity"),
+        wandb_project=exp_cfg.get("wandb_project"),
+        config_for_logging=config,
+        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints"),
+        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
+        save_best_checkpoints=exp_cfg.get("save_best_checkpoints"),
+        save_final_checkpoint=exp_cfg.get("save_final_checkpoint"),
+        checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name),
+        # --- SPECIFIC ---
         meta_iterations=META_ITERS,
         validate_every= VALIDATE_EVERY,
         validate_meta_every= VALIDATE_EVERY,
-        # datasets / splits
+        # datasets / splits 
         train_ds=train_ds,
         val_ds=val_ds,
         test_ds=test_ds,
         S_train=sm.S_train,
         S_val=sm.S_val,
         S_test=sm.S_test,
-        # optim
-        loss_fn=None,
+        # loss / factories
+        loss_fn=nn.CrossEntropyLoss(),
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
-        # episodes
+        # episode design
         k_support=K_SUPPORT,
         q_query=Q_QUERY,
+        q_eval=Q_EVAL,
+        val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
         inner_steps=INNER_STEPS,
         inner_lr=INNER_LR,
         run_size=RUN_SIZE,
-        # perf
-        use_amp=USE_AMP,
-        non_blocking=NON_BLOCKING,
-        pin_memory=PIN_MEMORY,
-        use_compile=USE_COMPILE,
-        # logging
-        use_wandb=exp_cfg.get("log_to_wandb", False),
-        wandb_entity=exp_cfg.get("wandb_entity"),
-        wandb_project=exp_cfg.get("wandb_project"),
-        config_for_logging=config,
-        # checkpoints
-        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
-        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
-        save_regular_checkpoints_interval=exp_cfg.get(
-            "save_regular_checkpoints_interval", 10
-        ),
-        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
-        checkpoint_dir=(
-            Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name
-        ),
-        # RNG + shaping
+        # RNG 
         seed=SEED,
-        # n_channels=n_channels,
-        electrodes=electrodes,
         clip_grad_norm=CLIP_GRAD,
-        q_eval=Q_EVAL,
-        val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
-
+        # supervised-in-meta knobs
         n_epochs_supervised=n_epochs_supervised,
         meta_iters_per_meta_epoch=meta_iters_per_meta_epoch,
-
         supervised_train_batch_size=supervised_train_batch_size,
         supervised_eval_batch_size=supervised_eval_batch_size,
-
         supervised_optimizer_factory=make_sup_optimizer,
         supervised_scheduler_factory=make_sup_scheduler,
     )
@@ -358,7 +349,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
-        use_wandb=exp_cfg.get("log_to_wandb", False),
+        use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_prefix="test",
         run_size = 100,
     )
@@ -374,11 +365,10 @@ if __name__ == "__main__":
 
     test_cfg = config.get("test", {})
     try:
-        # engine.train_alternating()
-        engine.meta_train()
+        engine.train_alternating()
         all_results = tester.test_all_subjects(
-            shots_list= [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
-            n_epochs= 10,
+            shots_list= [0, 1, 2],
+            n_epochs= 2,
         )
     finally:
         engine.train_ds.close()
