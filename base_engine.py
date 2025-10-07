@@ -72,8 +72,22 @@ class BaseEngine:
         if self.config_for_logging is not None:
             with open(self.checkpoint_root / "config.json", "w") as f:
                 json.dump(self.config_for_logging, f, indent=2)
+
+        self._audit_trainables()
         
         self.start_time = time.time()
+
+    
+    def _audit_trainables(self):
+        if hasattr(self.model, "print_trainable_parameters"):
+            self.model.print_trainable_parameters()
+        named_params = list(self.model.named_parameters())
+        trainables = [(n, p.numel()) for n, p in named_params if p.requires_grad]
+        frozen = [(n, p.numel()) for n, p in named_params if not p.requires_grad]
+        n_tr = sum(k for _, k in trainables)
+        n_fr = sum(k for _, k in frozen)
+        logger.info(f"Trainable params: {len(trainables)} tensors, {n_tr} elems")
+        logger.info(f"Frozen params:    {len(frozen)} tensors, {n_fr} elems")
 
 
     def log_metrics(self):

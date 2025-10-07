@@ -9,8 +9,7 @@ from typing import Any, Dict, List, Optional, Union, Callable
 import torch
 import torch.nn as nn
 from torch.func import functional_call
-from models import load_labram
-from preprocess_KU_data import get_ku_dataset_channels
+
 from meta_helpers import (
     build_episode_index,
     sample_support,
@@ -72,7 +71,7 @@ class MetaEngine(BaseEngine):
         meta_iterations: int,
         validate_every: int,
         validate_meta_every: int,
-        # --- datasets / splits ---
+        # datasets / splits 
         train_ds,
         val_ds,
         test_ds,
@@ -85,17 +84,15 @@ class MetaEngine(BaseEngine):
         scheduler_factory: Callable[[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]],
         # episode design
         k_support: int,
-        q_query: Optional[int],  # None => all remaining
+        q_query: Optional[int],
+        q_eval: Optional[int],
+        val_episodes_per_subject: Optional[int],
         inner_steps: int,
         inner_lr: float,
-        run_size: int,  # used for episode indexing
-        # --- RNG ---
+        run_size: int,
+        # RNG
         seed: int = 111,
-        # --- Labram ---
-        channels: int = 62,
         clip_grad_norm: float = None,
-        q_eval: int = None,
-        val_episodes_per_subject: int = None,
         # supervised-in-meta knobs
         n_epochs_supervised: int = 100,
         meta_iters_per_meta_epoch: int = 100,
@@ -128,130 +125,58 @@ class MetaEngine(BaseEngine):
             checkpoint_dir=checkpoint_dir,
         )
 
-        # id / meta_iterations
         self.meta_iterations = int(meta_iterations)
+        self.validate_every = validate_every
+        self.validate_meta_every = validate_meta_every
 
         # datasets / splits
-        self.train_ds, self.val_ds, self.test_ds = train_ds, val_ds, test_ds
-        self.S_train, self.S_val, self.S_test = list(S_train), list(S_val), list(S_test)
+        self.train_ds = train_ds
+        self.val_ds = val_ds
+        self.test_ds = test_ds
+        self.S_train = S_train
+        self.S_val = S_val
+        self.S_test = S_test
 
-        # episode knobs
-        self.K = int(k_support)
+        # loss / factories
+        self.loss_fn = loss_fn or nn.CrossEntropyLoss()
+        self.optimizer_factory = optimizer_factory
+        self.scheduler_factory = scheduler_factory
+
+        # episode design
+        self.K = k_support
         self.Q = q_query
-        self.Q_eval = q_eval or q_query
-        self.inner_steps = int(inner_steps)
-        self.inner_lr = float(inner_lr)
-        self.validate_every = int(validate_every)
-        self.validate_meta_every = int(validate_meta_every)
+        self.Q_eval = q_eval
+        self.val_episodes_per_subject = val_episodes_per_subject
+        self.inner_steps = inner_steps
+        self.inner_lr = inner_lr
 
         # episode indices (explicit run_size)
         self.train_epi = build_episode_index(self.train_ds, run_size=run_size)
         self.val_epi = build_episode_index(self.val_ds, run_size=run_size)
         self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
 
-        # optim / sched
-        self.loss_fn = loss_fn or nn.CrossEntropyLoss()
-        self.optimizer_factory = optimizer_factory
-        self.scheduler_factory = scheduler_factory
-        self.clip_grad_norm = clip_grad_norm
-
-        # logging
-        self.config_for_logging = config_for_logging
-
-        # Labram
-        self.channels = channels
-
-        # checkpoints
-        self.save_best_checkpoints = save_best_checkpoints
-        self.save_regular_checkpoints = save_regular_checkpoints
-        self.save_final_checkpoint = save_final_checkpoint
-        self.save_regular_checkpoints_interval = int(save_regular_checkpoints_interval)
-        self.checkpoint_root = (
-            Path(checkpoint_dir)
-            if checkpoint_dir
-            else (
-                Path(__file__).parent
-                / "weights"
-                / "checkpoints_meta"
-                / self.experiment_name
-            )
-        )
-        self.checkpoint_root.mkdir(parents=True, exist_ok=True)
-
-        # dump config snapshot (optional)
-        if self.config_for_logging is not None:
-            with open(self.checkpoint_root / "config.json", "w") as f:
-                json.dump(self.config_for_logging, f, indent=2)
-
         # misc
         self.metrics = Metrics()
-        
-        self._printed_header = False
         self.rng = random.Random(int(seed))
         self.seed = seed
+        self.clip_grad_norm = clip_grad_norm
 
-        self.base_param_shapes = [p.shape for p in self.model.parameters()]
+        self._allow_trainable = {n for n, p in self.model.named_parameters() if p.requires_grad}
+        allow_params = [p for n, p in self.model.named_parameters() if n in self._allow_trainable]
+        assert allow_params, "No allowed trainable params — check policy/target_modules."
 
-        self._audit_trainables()
-        self._allow_trainable = self._expected_trainable_names()
-
-        allow_params = [
-            p for n, p in self.model.named_parameters() if n in self._allow_trainable
-        ]
-        assert (
-            allow_params
-        ), "No allowed trainable params — check policy/target_modules."
+        # opt/scheduler
         self.optimizer = optimizer_factory(allow_params)
         self.scheduler = scheduler_factory(self.optimizer)
 
-        self.val_episodes_per_subject = val_episodes_per_subject
-
-        # -------- supervised (normal) optimizer/scheduler --------
-        self.sup_optimizer_factory = (
-            supervised_optimizer_factory  # or optimizer_factory
-        )
-        self.sup_scheduler_factory = (
-            supervised_scheduler_factory  # or scheduler_factory
-        )
-
-        # we’ll train the same allowed params by default; override policy here if needed
-        sup_params = [
-            p for n, p in self.model.named_parameters() if n in self._allow_trainable
-        ]
-        self.sup_optimizer = self.sup_optimizer_factory(sup_params)
-        self.sup_scheduler = self.sup_scheduler_factory(self.sup_optimizer)
-
+        # supervised-in-meta knobs
         self.n_epochs_supervised = n_epochs_supervised
         self.meta_iters_per_meta_epoch = meta_iters_per_meta_epoch
         self.supervised_train_batch_size = supervised_train_batch_size
         self.supervised_eval_batch_size = supervised_eval_batch_size
-
-        self.sup_optimizer = self.sup_optimizer_factory(sup_params)
-        self.sup_scheduler = self.sup_scheduler_factory(self.sup_optimizer)
-
-    def _expected_trainable_names(self):
-        names = []
-        for n, p in self.model.named_parameters():
-            if p.requires_grad:
-                names.append(n)
-        return set(names)
-
-    def _audit_trainables(self):
-        if hasattr(self.model, "print_trainable_parameters"):
-            self.model.print_trainable_parameters()
-
-        trainables = [
-            (n, p.numel()) for n, p in self.model.named_parameters() if p.requires_grad
-        ]
-        frozen = [
-            (n, p.numel())
-            for n, p in self.model.named_parameters()
-            if not p.requires_grad
-        ]
-        n_tr = sum(k for _, k in trainables)
-        n_fr = sum(k for _, k in frozen)
-        logger.info(f"Trainable params: {len(trainables)} tensors, {n_tr} elems")
-        logger.info(f"Frozen params:    {len(frozen)} tensors, {n_fr} elems")
+        self.sup_optimizer = supervised_optimizer_factory(allow_params)
+        self.sup_scheduler = supervised_scheduler_factory(self.sup_optimizer)
+        
 
     def _grad_norm(self, params) -> float:
         grad_tensors = [p.grad.detach() for p in params if p.grad is not None]

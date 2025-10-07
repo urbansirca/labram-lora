@@ -5,6 +5,7 @@ from typing import Iterable
 
 import yaml
 import torch
+import torch.nn as nn
 
 from meta_engine import MetaEngine
 from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
@@ -289,65 +290,56 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     # -------- engine -----------------------
     engine = MetaEngine(
-        # core
-        model=model,
+        # --- BASE ---
         model_str=model_str,
         experiment_name=experiment_name,
         device=DEVICE,
+        model=model,
+        electrodes=electrodes,
+        non_blocking=NON_BLOCKING,
+        pin_memory=PIN_MEMORY,
+        use_compile=USE_COMPILE,
+        use_amp=USE_AMP,
+        use_wandb=exp_cfg.get("log_to_wandb", False),
+        wandb_entity=exp_cfg.get("wandb_entity"),
+        wandb_project=exp_cfg.get("wandb_project"),
+        config_for_logging=config,
+        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
+        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
+        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
+        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
+        checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name),
+        # --- SPECIFIC ---
         meta_iterations=META_ITERS,
         validate_every= VALIDATE_EVERY,
         validate_meta_every= VALIDATE_EVERY,
-        # datasets / splits
+        # datasets / splits 
         train_ds=train_ds,
         val_ds=val_ds,
         test_ds=test_ds,
         S_train=sm.S_train,
         S_val=sm.S_val,
         S_test=sm.S_test,
-        # optim
-        loss_fn=None,
+        # loss / factories
+        loss_fn=nn.CrossEntropyLoss(),
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
-        # episodes
+        # episode design
         k_support=K_SUPPORT,
         q_query=Q_QUERY,
+        q_eval=Q_EVAL,
+        val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
         inner_steps=INNER_STEPS,
         inner_lr=INNER_LR,
         run_size=RUN_SIZE,
-        # perf
-        use_amp=USE_AMP,
-        non_blocking=NON_BLOCKING,
-        pin_memory=PIN_MEMORY,
-        use_compile=USE_COMPILE,
-        # logging
-        use_wandb=exp_cfg.get("log_to_wandb", False),
-        wandb_entity=exp_cfg.get("wandb_entity"),
-        wandb_project=exp_cfg.get("wandb_project"),
-        config_for_logging=config,
-        # checkpoints
-        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
-        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
-        save_regular_checkpoints_interval=exp_cfg.get(
-            "save_regular_checkpoints_interval", 10
-        ),
-        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
-        checkpoint_dir=(
-            Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name
-        ),
-        # RNG + shaping
+        # RNG 
         seed=SEED,
-        # n_channels=n_channels,
-        electrodes=electrodes,
         clip_grad_norm=CLIP_GRAD,
-        q_eval=Q_EVAL,
-        val_episodes_per_subject=VAL_EPISODES_PER_SUBJECT,
-
+        # supervised-in-meta knobs
         n_epochs_supervised=n_epochs_supervised,
         meta_iters_per_meta_epoch=meta_iters_per_meta_epoch,
-
         supervised_train_batch_size=supervised_train_batch_size,
         supervised_eval_batch_size=supervised_eval_batch_size,
-
         supervised_optimizer_factory=make_sup_optimizer,
         supervised_scheduler_factory=make_sup_scheduler,
     )
@@ -374,11 +366,10 @@ if __name__ == "__main__":
 
     test_cfg = config.get("test", {})
     try:
-        # engine.train_alternating()
-        engine.meta_train()
+        engine.train_alternating()
         all_results = tester.test_all_subjects(
-            shots_list= [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
-            n_epochs= 10,
+            shots_list= [0, 1, 2],
+            n_epochs= 2,
         )
     finally:
         engine.train_ds.close()
