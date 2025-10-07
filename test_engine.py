@@ -26,24 +26,26 @@ class TestEngine:
         test_ds,
         use_wandb: bool = False,
         wandb_prefix: str = "test",
-        run_size: int = 100, 
+        run_size: int = 100,
+        save_dir: Union[str, Path] = None,
     ):
         self.engine = engine
         self.optimizer_factory = engine.optimizer_factory
-        
-        self.rng = random.Random(int(42)) #TODO: get it from engine maybe 
+
+        self.rng = random.Random(int(111))  # TODO: get it from engine maybe
         self.S_test = test_ds.subject_ids
         self.test_ds = test_ds
         self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
-        self._allow_trainable = {n for n, p in self.engine.model.named_parameters() if p.requires_grad}
+        self._allow_trainable = {
+            n for n, p in self.engine.model.named_parameters() if p.requires_grad
+        }
 
         self.use_wandb = use_wandb
         self.wandb_prefix = wandb_prefix
-        self.save_dir = Path("results/test/{}".format(self.engine.experiment_name))
+        self.save_dir = save_dir
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self._t0 = time.time()
 
-    
     def _forward_with(self, params_dict, x):
         if self.engine.use_amp:
             with torch.autocast(device_type=self.device.type):
@@ -60,13 +62,15 @@ class TestEngine:
                 args=(),
                 kwargs={"x": x, "electrodes": self.engine.electrodes},
             )
-        
+
     def _clone_as_leaf(self, params):
         return [
             torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in params
         ]
 
-    def _zero_shot_evaluate(self, subject_id: int) -> Dict[str, float]:
+    def _zero_shot_evaluate(
+        self, subject_id: int, rep: Optional[int] = None
+    ) -> Dict[str, float]:
         """Evaluate model on subject without any adaptation."""
         self.engine.model.eval()
 
@@ -96,6 +100,7 @@ class TestEngine:
             {
                 "subject_id": subject_id,
                 "n_shots": 0,
+                "n_repeat": rep,
                 "n_query": len(yq),
                 "epoch": 0,
                 "loss": loss.item(),
@@ -165,7 +170,7 @@ class TestEngine:
         return support_local, query_local
 
     def _adapt_and_evaluate(
-        self, subject_id: int, n_shots: int, n_epochs: int
+        self, subject_id: int, n_shots: int, n_epochs: int, rep: Optional[int] = None
     ) -> Dict[str, float]:
         """Adapt model on n_shots and evaluate on remaining trials."""
         self.engine.model.eval()
@@ -257,6 +262,7 @@ class TestEngine:
                 {
                     "subject_id": subject_id,
                     "n_shots": n_shots,
+                    "n_repeat": rep,
                     "epoch": epoch,
                     "n_support": len(ys),
                     "n_query": len(yq),
@@ -321,9 +327,7 @@ class TestEngine:
                 )
             else:
                 # Check if we have enough trials for this many shots
-                available_trials = len(
-                    self.test_epi.subj_local_to_global[subject_id]
-                )
+                available_trials = len(self.test_epi.subj_local_to_global[subject_id])
                 assert (
                     n_shots <= available_trials
                 ), f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
@@ -361,6 +365,7 @@ class TestEngine:
         self,
         shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
         n_epochs: int = 10,
+        n_repeats: int = 10,
     ) -> Dict[int, pd.DataFrame]:
         """
         Test adaptation for all test subjects.
@@ -373,63 +378,158 @@ class TestEngine:
         Returns:
             Dictionary mapping subject_id -> DataFrame of results
         """
-        logger.info(
-            f"Testing {len(self.S_test)} subjects with {n_epochs} epochs"
-        )
-
+        logger.info(f"Testing {len(self.S_test)} subjects with {n_epochs} epochs")
         all_results = {}
         aggregated_results = []
+
+        # For repetition-level CSV: collect rows with columns for epoch-wise metrics
+        repetition_rows = []
 
         for subject_id in self.S_test:
             start_time = time.time()
 
-            # Test this subject
-            subject_df = self.test_subject_adaptation(subject_id, shots_list, n_epochs)
-            all_results[subject_id] = subject_df
+            # For each subject, iterate shots and repetitions
+            subject_results_for_return = {}
+            for n_shots in shots_list:
+                per_shot_records = []
 
-            # Save individual subject results
+                if n_shots == 0:
+                    # Zero-shot: repeat evaluation n_repeats times (identical results)
+                    for rep in range(n_repeats):
+                        result = self._zero_shot_evaluate(subject_id, rep=rep)
+                        # Build row for CSV with epoch columns filled with same value
+                        acc_test = [result["accuracy"]] * n_epochs
+                        loss_q = [result["loss"]] * n_epochs
+                        acc_train = [float("nan")] * n_epochs
+                        loss_supp = [float("nan")] * n_epochs
+
+                        row = {
+                            "subject_id": subject_id,
+                            "shots": n_shots,
+                            "repetition": rep,
+                            # keep existing final_accuracy as test final for compatibility
+                            "final_accuracy": result["accuracy"],
+                            "final_loss": result["loss"],
+                            # also expose train final (NaN for zero-shot)
+                            "final_accuracy_train": float("nan"),
+                            "n_samples": result["n_samples"],
+                            "n_support": 0,
+                            "n_query": result["n_samples"],
+                        }
+                        # add epoch columns: train (support), test (query), support/test losses
+                        for ei in range(n_epochs):
+                            row[f"acc_train_e{ei+1}"] = acc_train[ei]
+                            row[f"acc_test_e{ei+1}"] = acc_test[ei]
+                            row[f"loss_supp_e{ei+1}"] = loss_supp[ei]
+                            row[f"loss_q_e{ei+1}"] = loss_q[ei]
+                        repetition_rows.append(row)
+                        per_shot_records.append(row)
+                else:
+                    # Few-shot: perform n_repeats different samplings/adaptations
+                    available_trials = len(
+                        self.test_epi.subj_local_to_global[subject_id]
+                    )
+                    assert (
+                        n_shots <= available_trials
+                    ), f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
+
+                    for rep in range(n_repeats):
+                        run = self._adapt_and_evaluate(
+                            subject_id, n_shots, n_epochs, rep=rep
+                        )
+                        acc_q = run["accuracy_q"]
+                        acc_s = run.get("accuracy_s", [])
+                        loss_q = run.get("loss_q", [])
+                        loss_s = run.get("loss_s", [])
+
+                        row = {
+                            "subject_id": subject_id,
+                            "shots": n_shots,
+                            "repetition": rep,
+                            # keep existing final_accuracy as test final for compatibility
+                            "final_accuracy": acc_q[-1] if len(acc_q) else float("nan"),
+                            "final_loss": loss_q[-1] if len(loss_q) else float("nan"),
+                            # final train/support accuracy
+                            "final_accuracy_train": (
+                                acc_s[-1] if len(acc_s) else float("nan")
+                            ),
+                            "n_samples": run.get("n_support", 0)
+                            + run.get("n_query", 0),
+                            "n_support": run.get("n_support", 0),
+                            "n_query": run.get("n_query", 0),
+                        }
+                        # add epoch columns (pad/truncate to n_epochs)
+                        for ei in range(n_epochs):
+                            row[f"acc_train_e{ei+1}"] = (
+                                acc_s[ei] if ei < len(acc_s) else float("nan")
+                            )
+                            row[f"acc_test_e{ei+1}"] = (
+                                acc_q[ei] if ei < len(acc_q) else float("nan")
+                            )
+                            row[f"loss_supp_e{ei+1}"] = (
+                                loss_s[ei] if ei < len(loss_s) else float("nan")
+                            )
+                            row[f"loss_q_e{ei+1}"] = (
+                                loss_q[ei] if ei < len(loss_q) else float("nan")
+                            )
+                        repetition_rows.append(row)
+                        per_shot_records.append(row)
+
+                # Aggregate final accuracy per-shot across repetitions for summary
+                # Build a small DataFrame for this subject/shot where index is repetition
+                shot_df = pd.DataFrame(per_shot_records).set_index("repetition")
+                subject_results_for_return[n_shots] = shot_df
+
+            all_results[subject_id] = subject_results_for_return
+
+            # Save individual subject results (JSON of the per-shot dict of repetition DataFrames)
             if self.save_dir:
-                subject_results = {
+                serializable = {
                     "subject_id": subject_id,
-                    "results": subject_df.to_dict(
-                        "index"
-                    ),  # Convert to dict for JSON serialization
+                    "results": {
+                        k: v.to_dict("index")
+                        for k, v in subject_results_for_return.items()
+                    },
                     "shots_list": shots_list,
                     "n_epochs": n_epochs,
+                    "n_repeats": n_repeats,
                     "timestamp": time.time(),
                 }
-
                 with open(
                     self.save_dir / f"subject_{subject_id}_results.json", "w"
                 ) as f:
-                    json.dump(subject_results, f, indent=2)
+                    json.dump(serializable, f, indent=2)
 
-            # Log to wandb if requested
+            # Log to wandb if requested: use mean final_accuracy across repetitions for each shot
             if self.use_wandb and self.engine.wandb_run is not None:
-                # Log individual subject metrics
                 for shots in shots_list:
-                    if shots in subject_df.index:
-                        final_acc = subject_df.loc[shots, "final_accuracy"]
-                        if not pd.isna(final_acc):
+                    shot_df = subject_results_for_return.get(shots)
+                    if shot_df is not None and not shot_df.empty:
+                        mean_final_acc = shot_df["final_accuracy"].mean()
+                        if not pd.isna(mean_final_acc):
                             self.engine.wandb_run.log(
                                 {
-                                    f"{self.wandb_prefix}/subject_{subject_id}/shots_{shots}/final_accuracy": final_acc
+                                    f"{self.wandb_prefix}/subject_{subject_id}/shots_{shots}/final_accuracy": float(
+                                        mean_final_acc
+                                    )
                                 }
                             )
 
-            # Collect for aggregation
+            # Collect for aggregation: use per-repetition final accuracies
             for shots in shots_list:
-                if shots in subject_df.index:
-                    final_acc = subject_df.loc[shots, "final_accuracy"]
-                    if not pd.isna(final_acc):
-                        aggregated_results.append(
-                            {
-                                "subject_id": subject_id,
-                                "shots": shots,
-                                "epochs": n_epochs,
-                                "final_accuracy": final_acc,
-                            }
-                        )
+                shot_df = all_results[subject_id].get(shots)
+                if shot_df is not None and not shot_df.empty:
+                    for rep_idx, row in shot_df.iterrows():
+                        final_acc = row.get("final_accuracy")
+                        if not pd.isna(final_acc):
+                            aggregated_results.append(
+                                {
+                                    "subject_id": subject_id,
+                                    "shots": shots,
+                                    "epochs": n_epochs,
+                                    "final_accuracy": float(final_acc),
+                                }
+                            )
 
             elapsed = time.time() - start_time
             logger.info(f"Subject {subject_id} completed in {elapsed:.2f}s")
@@ -491,7 +591,6 @@ class TestEngine:
                         )
                     }
                 )
-
         # Save aggregated results
         if self.save_dir:
             summary = {
@@ -505,19 +604,77 @@ class TestEngine:
 
             with open(self.save_dir / "aggregated_results.json", "w") as f:
                 json.dump(summary, f, indent=2)
-        
+        # Save repetition-level CSV (rows: subject x shots x repetition; columns include epoch metrics)
+        if repetition_rows and self.save_dir:
+            rep_df = pd.DataFrame(repetition_rows)
+
+            # Reorder columns so that per-epoch metrics are grouped as:
+            # acc_train_e1..eN, acc_test_e1..eN, loss_supp_e1..eN, loss_q_e1..eN
+            try:
+                n_epochs = int(n_epochs)
+            except Exception:
+                # fallback: infer epoch columns count from column names
+                epoch_idxs = sorted(
+                    set(
+                        int(c.split("e")[-1])
+                        for c in rep_df.columns
+                        if (
+                            c.startswith("acc_train_e")
+                            or c.startswith("acc_test_e")
+                            or c.startswith("loss_supp_e")
+                            or c.startswith("loss_q_e")
+                        )
+                    )
+                )
+                n_epochs = max(epoch_idxs) if epoch_idxs else 0
+
+            base_cols = [
+                "subject_id",
+                "shots",
+                "repetition",
+                "final_accuracy",
+                "final_loss",
+                "final_accuracy_train",
+                "n_samples",
+                "n_support",
+                "n_query",
+            ]
+
+            acc_train_cols = [f"acc_train_e{i+1}" for i in range(n_epochs)]
+            acc_test_cols = [f"acc_test_e{i+1}" for i in range(n_epochs)]
+            loss_train_cols = [f"loss_supp_e{i+1}" for i in range(n_epochs)]
+            loss_test_cols = [f"loss_q_e{i+1}" for i in range(n_epochs)]
+
+            desired = (
+                base_cols
+                + acc_train_cols
+                + acc_test_cols
+                + loss_train_cols
+                + loss_test_cols
+            )
+
+            # Keep only columns that exist in the DataFrame (be robust to missing columns)
+            ordered = [c for c in desired if c in rep_df.columns]
+            # Add any other columns that weren't anticipated at the end
+            remaining = [c for c in rep_df.columns if c not in ordered]
+            rep_df = rep_df[ordered + remaining]
+
+            rep_csv = self.save_dir / "repetition_results.csv"
+            rep_df.to_csv(rep_csv, index=False)
+            logger.info(f"Saved repetition-level CSV to {rep_csv}")
+
         self.plot_aggregated_results(
             self.save_dir / "aggregated_results.json",
             metric="final_accuracy",
             save_path=self.save_dir / "plot_final_accuracy.png",
         )
 
-        logger.info(f"Saved aggregated results to {self.save_dir / 'aggregated_results.json'}")
+        logger.info(
+            f"Saved aggregated results to {self.save_dir / 'aggregated_results.json'}"
+        )
         logger.info(f"Saved plot to {self.save_dir / 'plot_final_accuracy.png'}")
 
-        logger.info(
-            f"Testing completed for all {len(self.S_test)} subjects"
-        )
+        logger.info(f"Testing completed for all {len(self.S_test)} subjects")
         return all_results
 
     def plot_aggregated_results(
@@ -561,7 +718,9 @@ class TestEngine:
         required_cols = {"subject_id", "shots", metric}
         if not required_cols.issubset(agg.columns):
             missing = required_cols - set(agg.columns)
-            raise ValueError(f"Missing required columns in aggregated_results: {missing}")
+            raise ValueError(
+                f"Missing required columns in aggregated_results: {missing}"
+            )
 
         # Pivot for easier plotting; one subject per 'line'
         # Not all subjects necessarily have all shots; leave missing as NaN
@@ -613,5 +772,3 @@ class TestEngine:
             plt.close(fig)
 
         return fig, ax
-
-

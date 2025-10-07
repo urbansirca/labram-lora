@@ -1,7 +1,8 @@
 
 
 experiment:
-  model: "labram"
+  name: null 
+  model: "eegnet" # "deepconvnet" or "eegnet" or "labram". for lomso not used
   seed: 111
   dataset: "KU"
   optimizer: "AdamW"
@@ -10,10 +11,12 @@ experiment:
   T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
   device: "cuda"
   log_to_wandb: true
+  log_to_wandb_test: false
+  wandb_project: "lomso-experiments" # lomso-experiments
   n_subjects: 54
 
-  save_regular_checkpoints: true
-  save_regular_checkpoints_interval: 5
+  save_regular_checkpoints: false
+  save_regular_checkpoints_interval: 5 # best val will also not save before this
   save_final_checkpoint: true
   save_best_checkpoints: true
 
@@ -22,8 +25,7 @@ experiment:
   early_stopping_delta: 0.001
 
 
-  # train after stopping
-  epochs: 100
+  epochs: 25
   train_after_stopping: false # if true, will train the model after early stopping
   train_after_stopping_epochs: 3
 
@@ -36,19 +38,14 @@ optimizations:
   use_compile: false # use torch.compile
 
 
+
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed_normalized.h5"      # <-- set this
-  electrodes: ["FP1","FP2","F7","F3","FZ","F4","F8","FC5","FC1","FC2","FC6",
-    "T7","C3","CZ","C4","T8","TP9","CP5","CP1","CP2","CP6","TP10","P7","P3","PZ",
-    "P4","P8","PO9","O1","OZ","O2","PO10","FC3","FC4","C5","C1","C2","C6","CP3",
-    "CPZ","CP4","P1","P2","POZ","FT9","FTT9h","TTP7h","TP7","TPP9h","FT10","FTT10h",
-    "TPP8h","TP8","TPP10h","F9","F10","AF7","AF3","AF4","AF8","PO3","PO4"]
-
-
+  electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
   # choose exactly one of the two lines below:
   # leave_out: [1, 2]             # explicit test subjects 
-  m_leave_out: 2                  # OR: number of subjects to leave out at random
-  train_proportion: 0.90          # share of train_pool that goes to TRAIN (rest is VAL)
+  m_leave_out: null #                  # OR: number of subjects to leave out at random, set to null for lomso
+  train_proportion: 0.97   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
   num_classes: 2 
   input_channels: 62
@@ -68,23 +65,15 @@ sampler:
 labram:
   lr: 0.002
   weight_decay: 0.002
-  seed: 42
+  seed: 111
   lora: true
   adapter_checkpoint_dir: null
 
 
 peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
-  lora_alpha: 16
-  lora_dropout: 0.1
-  # target_modules: [
-  #   "blocks.0.attn.qkv", "blocks.1.attn.qkv", "blocks.2.attn.qkv", "blocks.3.attn.qkv", "blocks.4.attn.qkv", "blocks.5.attn.qkv",
-  #   "blocks.6.attn.qkv", "blocks.7.attn.qkv", "blocks.8.attn.qkv", "blocks.9.attn.qkv", "blocks.10.attn.qkv", "blocks.11.attn.qkv",
-  #   "blocks.0.attn.proj", "blocks.1.attn.proj", "blocks.2.attn.proj", "blocks.3.attn.proj", "blocks.4.attn.proj", "blocks.5.attn.proj",
-  #   "blocks.6.attn.proj", "blocks.7.attn.proj", "blocks.8.attn.proj", "blocks.9.attn.proj", "blocks.10.attn.proj", "blocks.11.attn.proj",
-  #   "blocks.0.mlp.fc1", "blocks.1.mlp.fc1", "blocks.2.mlp.fc1", "blocks.3.mlp.fc1", "blocks.4.mlp.fc1", "blocks.5.mlp.fc1",
-  #   "blocks.6.mlp.fc1", "blocks.7.mlp.fc1", "blocks.8.mlp.fc1", "blocks.9.mlp.fc1", "blocks.10.mlp.fc1", "blocks.11.mlp.fc1"
-  # ]
+  lora_alpha: 8
+  lora_dropout: 0.5
   target_modules: [   
     "proj",
     "qkv",
@@ -100,4 +89,9 @@ eegnet:
   D: 2
   F2: 16
 
-
+test:
+  n_epochs: 10
+  shots: [0, 1, 2, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name

@@ -196,7 +196,7 @@ class Engine:
         # torch.backends.cuda.matmul.allow_tf32 = True
 
     def checkpoint(self, name: str = "checkpoint"):
-        out_stem = str(self.checkpoint_root / name)
+        out_stem = str(self.checkpoint_root / str(name))
 
         # Save depending on model type
         if hasattr(self.model, "save_pretrained"):  

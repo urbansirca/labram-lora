@@ -43,7 +43,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     NON_BLOCKING = opt_cfg.get("non_blocking", False)
     USE_AMP = opt_cfg.get("use_amp", False)
 
-    electrodes = get_ku_dataset_channels() or data_cfg.get("electrodes")
+    electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
     logger.info(f"USING ELECTRODES: {electrodes}")
 
     # ---------------- model ------------------
@@ -302,7 +302,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         # logging
         use_wandb=exp_cfg.get("log_to_wandb", False),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
-        wandb_project="EEG-FM",
+        wandb_project=exp_cfg.get("wandb_project", "EEG-FM"),
 
         # checkpoints
         save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
@@ -330,9 +330,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
-        use_wandb=exp_cfg.get("log_to_wandb", False),
+        use_wandb=exp_cfg.get("log_to_wandb_test", False),
         wandb_prefix="test",
-        run_size = 100,
+        run_size=100,
+        save_dir=exp_cfg.get("test", {}).get("save_dir_root", Path("results/test")) / model_str / experiment_name,
     )
     return engine, tester
 

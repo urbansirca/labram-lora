@@ -24,6 +24,7 @@ class SplitConfig:
 
     def __post_init__(self):
         if (self.subject_ids_leave_out is None) == (self.m_leave_out is None):
+            print(self.subject_ids_leave_out, self.m_leave_out)
             raise ValueError(
                 "Specify exactly one of subject_ids_leave_out OR m_leave_out."
             )
