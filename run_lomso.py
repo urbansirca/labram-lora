@@ -31,12 +31,57 @@ def build_subject_list(config):
     return list(subjects)
 
 
-def run_lomso(
-    config_path: str,
-    max_folds: int = None,
-):
+def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best"):
+    """
+    gets the checkpoint file for a given model and leave_out subjects for LOMSO. 
+    type can be best or final
+    """
+    
+    model_dir = Path(root_dir) / model_name
+    if not model_dir.exists():
+        raise ValueError(f"Model directory {model_dir} does not exist")
+    # find the experiment dir with the matching leave_out subjects
+    for experiment_dir in model_dir.iterdir():
+        if not experiment_dir.is_dir():
+            continue
+        # check if leave_out matches
+        if f"test{'-'.join(map(str, sorted(leave_out_subjs)))}" in experiment_dir.name:
+            # found the matching experiment dir
+            if model_name == "deepconvnet":
+                if type == "best":
+                    ckpt_file = experiment_dir / "best_val_checkpoint.pt"
+                elif type == "final":
+                    # find .pt file that starts with final_checkpoint (there should be only one)
+                    final_ckpt_files = list(experiment_dir.glob("final_checkpoint*.pt"))
+                    if not final_ckpt_files:
+                        raise ValueError(f"No final_checkpoint*.pt file found in {experiment_dir}")
+                    if len(final_ckpt_files) > 1:
+                        raise ValueError(f"Multiple final_checkpoint*.pt files found in {experiment_dir}")
+                    ckpt_file = final_ckpt_files[0]
+            elif model_name == "labram":
+                if type == "best":
+                    ckpt_file = experiment_dir / "best_val_checkpoint" # its a lora directory
+                elif type == "final":
+                    # find the subfolder that starts with final_checkpoint (there should be only one)
+                    final_ckpt_dirs = [d for d in experiment_dir.iterdir() if d.is_dir() and d.name.startswith("final_checkpoint")]
+                    if not final_ckpt_dirs:
+                        raise ValueError(f"No final_checkpoint* directory found in {experiment_dir}")
+                    if len(final_ckpt_dirs) > 1:
+                        raise ValueError(f"Multiple final_checkpoint* directories found in {experiment_dir}")
+                    ckpt_file = final_ckpt_dirs[0]
+            else:
+                raise ValueError(f"Unknown model name {model_name}")
+    print(f"Found checkpoint file {ckpt_file} for model {model_name} leave_out {leave_out_subjs} type {type}")
+    return ckpt_file
+
+
+def run_lomso(config_path: str):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
+        
+    max_folds = base_cfg.get("lomso").get("max_folds")
+    test_only = base_cfg.get("lomso").get("test_only")
+    skip_models = base_cfg.get("lomso").get("skip_models")
 
     subjects = build_subject_list(base_cfg)
     N = len(subjects)
@@ -74,15 +119,29 @@ def run_lomso(
 
     results = {}
 
-    lomso_root = Path("lomso")
+    if not test_only:
+        lomso_root = Path("lomso")
+    else:
+        lomso_root = Path("test_only_lomso")
+        checkpoint_root = Path("lomso_supervised") # I renamed it from lomso --> lomso_supervised to avoid confusion
     # if lomso_root.exists():
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
     for model_name in models:
         logger.info(f"Running LOMSO for model: {model_name}")
+        # skip deepconvnet
+        if model_name in skip_models:
+            logger.info(f"Skipping {model_name} for now")
+            continue
 
         for fold_idx, test_pair in enumerate(folds, start=1):
+            # if fold_idx in [1,2,3]:
+            #     logger.info(f"Skipping fold {fold_idx} for development purposes")
+            #     continue
+            
+            
+            
             cfg = copy.deepcopy(base_cfg)
 
             # set model in experiment cfg
@@ -90,9 +149,8 @@ def run_lomso(
 
             # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
             cfg.setdefault("data", {})["leave_out"] = list(test_pair)
-
+    
             # set experiment name so checkpoints are separated per-fold
-
             experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
 
             dest = lomso_root / model_name / experiment_name
@@ -101,6 +159,16 @@ def run_lomso(
             # if any(dest.iterdir()):
             #     raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
 
+            if test_only:
+                # get checkpoint file from lomso_root
+                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best")
+                if model_name == "deepconvnet":
+                    cfg.setdefault("deepconvnet", {})["checkpoint_file"] = str(ckpt_file)
+                elif model_name == "labram":
+                    cfg.setdefault("labram", {})["adapter_checkpoint_dir"] = str(ckpt_file)
+                else:
+                    raise ValueError(f"Unknown model name {model_name}")
+                
             # create engine and tester
             engine, tester = get_engine(
                 cfg, with_tester=True, experiment_name=experiment_name
@@ -116,7 +184,8 @@ def run_lomso(
             logger.info(f"Checkpoints and results will be saved to {str(engine.checkpoint_root)}")
 
             # train
-            engine.train()
+            if not test_only:
+                engine.train()
 
             # run tests (tester.test_all_subjects uses the split's test subjects)
             all_results = tester.test_all_subjects(
@@ -155,4 +224,4 @@ def run_lomso(
 
 
 if __name__ == "__main__":
-    run_lomso("hyperparameters/hyperparameters.yaml") # set max_folds to limit number of folds for development purposes
+    run_lomso("hyperparameters/hyperparameters.yaml", ) # set max_folds to limit number of folds for development purposes

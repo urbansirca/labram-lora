@@ -2,9 +2,9 @@
 #SBATCH --job-name=labram-train
 #SBATCH --output=labram-train-%j.out
 #SBATCH --error=labram-train-%j.err
-#SBATCH --time=12:00:00           # walltime (adjust as needed)
+#SBATCH --time=16:00:00           # walltime (adjust as needed)
 #SBATCH --partition=gpu_h100      # GPU partition on Snellius
-
+#SBATCH --gpus-per-node=1    # number of GPUs per node
 # Load conda and activate environment
 source ~/.bashrc
 conda activate eeg
@@ -15,4 +15,4 @@ wandb login $WANDB_API_KEY
 
 # Go to project folder and run training
 cd ~/usirca/workspace/labram-lora
-python train.py
+python run_lomso.py

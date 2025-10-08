@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from engine import Engine
-from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter
+from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from test_engine import TestEngine
 from preprocess_KU_data import get_ku_dataset_channels
@@ -51,6 +51,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     model_name = exp_cfg["model"].lower()
     if model is None:
         if model_name == "labram":
+            model_str = "labram"
             hyperparameters = config["labram"]
             if hyperparameters["adapter_checkpoint_dir"] is None:
                 model = load_labram(
@@ -61,18 +62,28 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 model = load_labram_with_adapter(
                     hyperparameters["adapter_checkpoint_dir"]
                 )
-            model_str = "labram"
+            
+            if hyperparameters["head_only_train"]:
+                model = freeze_all_but_head_labram(model)
+                
 
-        
         elif model_name == "deepconvnet":
             hyperparameters = config.get("deepconvnet", {})
-            model = DeepConvNet(
-                in_chans=data_cfg.get("input_channels", 62),
-                n_classes=data_cfg.get("num_classes", 2),
-                input_time_length=data_cfg.get("samples", 800),
-                final_conv_length="auto",
-            )
             model_str = "deepconvnet"
+            model = DeepConvNet(
+                    in_chans=data_cfg.get("input_channels", 62),
+                    n_classes=data_cfg.get("num_classes", 2),
+                    input_time_length=data_cfg.get("samples", 800),
+                    final_conv_length="auto",
+                )
+            if hyperparameters["checkpoint_file"] is not None:
+                state_dict = torch.load(hyperparameters["checkpoint_file"], map_location="cpu")
+                model.load_state_dict(state_dict)
+                logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
+
+            if hyperparameters["head_only_train"]:
+                assert hyperparameters["checkpoint_file"] is not None, "When using head_only_train, a checkpoint_file must be specified to load the pretrained weights from."
+                model = freeze_all_but_head_deepconvnet(model)
 
         elif model_name == "eegnet":
             hyperparameters = config.get("eegnet", {})
@@ -309,6 +320,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     if not with_tester:
         return engine, None
     
+    
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
@@ -316,6 +328,9 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         wandb_prefix="test",
         run_size=100,
         save_dir=exp_cfg.get("test", {}).get("save_dir_root", Path("results/test")) / model_str / experiment_name,
+        head_only=hyperparameters.get("head_only_test"),
+        test_lr=hyperparameters.get("test_lr"),
+        test_wd=hyperparameters.get("test_wd"),
     )
     return engine, tester
 
@@ -328,6 +343,7 @@ if __name__ == "__main__":
     engine.train()
 
     all_results = tester.test_all_subjects(
-            shots_list= [0, 1, 2],
-            n_epochs= 2,
+            shots_list= config.get("test").get("shots"),
+            n_epochs= config.get("test").get("n_epochs"),
+            n_repeats=config.get("test").get("n_repeats"),
         )

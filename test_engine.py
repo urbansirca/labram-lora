@@ -16,6 +16,8 @@ from meta_helpers import (
     build_episode_index,
 )
 
+from models import freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,9 @@ class TestEngine:
         wandb_prefix: str = "test",
         run_size: int = 100,
         save_dir: Union[str, Path] = None,
+        head_only: bool = False,
+        test_lr: float = None,
+        test_wd: float = None,
     ):
         self.engine = engine
         self.optimizer_factory = engine.optimizer_factory
@@ -36,6 +41,7 @@ class TestEngine:
         self.S_test = test_ds.subject_ids
         self.test_ds = test_ds
         self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
+        
         self._allow_trainable = {
             n for n, p in self.engine.model.named_parameters() if p.requires_grad
         }
@@ -45,6 +51,38 @@ class TestEngine:
         self.save_dir = save_dir
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self._t0 = time.time()
+        
+        
+        self.head_only = head_only
+        self.test_lr = test_lr
+        self.test_wd = test_wd
+        
+    def prepare_model_for_testing(self):
+        """
+        prepare model for testing
+        """
+        # remove the scheduler from engine to avoid confusion
+        self.engine.scheduler = None
+        
+        if self.test_lr is not None:
+            logger.info(f"Overriding test learning rate to {self.test_lr}")
+            for param_group in self.engine.optimizer.param_groups:
+                param_group["lr"] = self.test_lr
+
+        if self.test_wd is not None:
+            logger.info(f"Overriding test weight decay to {self.test_wd}")
+            for param_group in self.engine.optimizer.param_groups:
+                param_group["weight_decay"] = self.test_wd
+
+        if self.head_only:  # freeze all but head
+            if self.engine.model_str == "labram":
+                self.engine.model = freeze_all_but_head_labram(self.engine.model)
+            elif self.engine.model_str == "deepconvnet":
+                self.engine.model = freeze_all_but_head_deepconvnet(self.engine.model)
+            else:
+                raise ValueError(f"head_only option not implemented for {self.engine.model_str}")
+            
+        
 
     def _forward_with(self, params_dict, x):
         if self.engine.use_amp:
@@ -378,6 +416,10 @@ class TestEngine:
         Returns:
             Dictionary mapping subject_id -> DataFrame of results
         """
+        # update learning rate and weight decay if specified
+        self.prepare_model_for_testing()
+        
+        
         logger.info(f"Testing {len(self.S_test)} subjects with {n_epochs} epochs")
         all_results = {}
         aggregated_results = []
