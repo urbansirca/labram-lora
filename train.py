@@ -221,9 +221,14 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
 
 
     # ---------------- factories ------------
-    def make_optimizer(model: torch.nn.Module):
-        lr = float(hyperparameters.get("lr", 1e-3))
-        wd = float(hyperparameters.get("weight_decay", 0.0))
+    def make_optimizer(model: torch.nn.Module, lr=None, wd=None):
+        
+        
+        # use hyperparameters from config if not provided (will be provided in test engine)
+        if lr is None:
+            lr = float(hyperparameters.get("lr", 1e-3))
+        if wd is None:
+            wd = float(hyperparameters.get("weight_decay", 0.0))
 
         # --- TEMPORARY PATCH -----------------------------------------------------
         # In the few-shot / meta-testing path, we call make_optimizer(fast)

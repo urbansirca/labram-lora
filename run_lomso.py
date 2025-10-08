@@ -38,6 +38,8 @@ def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best"):
     """
     
     model_dir = Path(root_dir) / model_name
+    
+    print(f"Looking for model directory {model_dir}")
     if not model_dir.exists():
         raise ValueError(f"Model directory {model_dir} does not exist")
     # find the experiment dir with the matching leave_out subjects
@@ -81,7 +83,7 @@ def run_lomso(config_path: str):
         
     max_folds = base_cfg.get("lomso").get("max_folds")
     test_only = base_cfg.get("lomso").get("test_only")
-    skip_models = base_cfg.get("lomso").get("skip_models")
+    skip_models = base_cfg.get("lomso").get("skip_models", [])
 
     subjects = build_subject_list(base_cfg)
     N = len(subjects)
@@ -134,88 +136,96 @@ def run_lomso(config_path: str):
         if model_name in skip_models:
             logger.info(f"Skipping {model_name} for now")
             continue
-
-        for fold_idx, test_pair in enumerate(folds, start=1):
-            # if fold_idx in [1,2,3]:
-            #     logger.info(f"Skipping fold {fold_idx} for development purposes")
-            #     continue
-            
-            
-            
-            cfg = copy.deepcopy(base_cfg)
-
-            # set model in experiment cfg
-            cfg.setdefault("experiment", {})["model"] = model_name
-
-            # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
-            cfg.setdefault("data", {})["leave_out"] = list(test_pair)
+        
+        for head_only in [True, False]:
+            for fold_idx, test_pair in enumerate(folds, start=1):
+                # if fold_idx in [1,2,3]:
+                #     logger.info(f"Skipping fold {fold_idx} for development purposes")
+                #     continue
     
-            # set experiment name so checkpoints are separated per-fold
-            experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
-
-            dest = lomso_root / model_name / experiment_name
-            dest.mkdir(parents=True, exist_ok=True)
-
-            # if any(dest.iterdir()):
-            #     raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
-
-            if test_only:
-                # get checkpoint file from lomso_root
-                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best")
-                if model_name == "deepconvnet":
-                    cfg.setdefault("deepconvnet", {})["checkpoint_file"] = str(ckpt_file)
-                elif model_name == "labram":
-                    cfg.setdefault("labram", {})["adapter_checkpoint_dir"] = str(ckpt_file)
-                else:
-                    raise ValueError(f"Unknown model name {model_name}")
+                cfg = copy.deepcopy(base_cfg)
                 
-            # create engine and tester
-            engine, tester = get_engine(
-                cfg, with_tester=True, experiment_name=experiment_name
-            )
+                # just for now
+                cfg.setdefault(model_name, {})["head_only_test"] = head_only
 
-            # Make engine and tester use the lomso folder as its checkpoint root
-            engine.checkpoint_root = dest
-            tester.save_dir = dest
+                # set model in experiment cfg
+                cfg.setdefault("experiment", {})["model"] = model_name
+                
 
-            logger.info(
-                f"Starting fold {fold_idx}/{len(folds)} for model {model_name}: test={test_pair} experiment_name={experiment_name}"
-            )
-            logger.info(f"Checkpoints and results will be saved to {str(engine.checkpoint_root)}")
+                # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
+                cfg.setdefault("data", {})["leave_out"] = list(test_pair)
+        
+                # set experiment name so checkpoints are separated per-fold
+                experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
+                
+                head_dir = "head-only" if head_only else "full-model"
 
-            # train
-            if not test_only:
-                engine.train()
+                dest = lomso_root / head_dir / model_name / experiment_name
+                dest.mkdir(parents=True, exist_ok=True)
 
-            # run tests (tester.test_all_subjects uses the split's test subjects)
-            all_results = tester.test_all_subjects(
-                shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats
-            )
+                # if any(dest.iterdir()):
+                #     raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
 
-            results[f"{model_name}/{experiment_name}"] = {
-                "test_pair": test_pair,
-                "experiment_name": experiment_name,
-                "checkpoint_dir": str(engine.checkpoint_root),
-                "results_dir": str(tester.save_dir)
-            }
+                if test_only:
+                    # get checkpoint file from lomso_root
+                    ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best")
+                    if model_name == "deepconvnet":
+                        cfg.setdefault("deepconvnet", {})["checkpoint_file"] = str(ckpt_file)
+                    elif model_name == "labram":
+                        cfg.setdefault("labram", {})["adapter_checkpoint_dir"] = str(ckpt_file)
+                    else:
+                        raise ValueError(f"Unknown model name {model_name}")
+                    
+                    # update lr to test lr
+                    # cfg.setdefault(model_name)["lr"] = base_cfg.get(model_name).get("test_lr")
+                    
+                # create engine and tester
+                engine, tester = get_engine(
+                    cfg, with_tester=True, experiment_name=experiment_name
+                )
 
-            # finish engine (closes wandb run, writes final_metrics) and free resources
-            try:
-                engine.finish()
-            except Exception:
-                logger.exception("engine.finish() failed")
+                # Make engine and tester use the lomso folder as its checkpoint root
+                engine.checkpoint_root = dest
+                tester.save_dir = dest
 
-            # free memory explicitly (helps when running many folds sequentially)
-            try:
-                import gc
-                import torch as _torch
+                logger.info(
+                    f"Starting fold {fold_idx}/{len(folds)} for model {model_name}: test={test_pair} experiment_name={experiment_name}"
+                )
+                logger.info(f"Checkpoints and results will be saved to {str(engine.checkpoint_root)}")
 
-                del engine
-                gc.collect()
-                if _torch.cuda.is_available():
-                    _torch.cuda.empty_cache()
-            except Exception:
-                pass
+                # train
+                if not test_only:
+                    engine.train()
+
+                # run tests (tester.test_all_subjects uses the split's test subjects)
+                all_results = tester.test_all_subjects(
+                    shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats
+                )
+
+                results[f"{model_name}/{experiment_name}"] = {
+                    "test_pair": test_pair,
+                    "experiment_name": experiment_name,
+                    "checkpoint_dir": str(engine.checkpoint_root),
+                    "results_dir": str(tester.save_dir)
+                }
+
+                # finish engine (closes wandb run, writes final_metrics) and free resources
+                try:
+                    engine.finish()
+                except Exception:
+                    logger.exception("engine.finish() failed")
+
+                # free memory explicitly (helps when running many folds sequentially)
+                try:
+                    import gc
+                    import torch as _torch
+
+                    del engine
+                    gc.collect()
+                    if _torch.cuda.is_available():
+                        _torch.cuda.empty_cache()
+                except Exception:
+                    pass
 
     outp = lomso_root / "lomso.yaml"
     outp.parent.mkdir(parents=True, exist_ok=True)

@@ -67,8 +67,8 @@ labram:
   weight_decay: 0.002
   lora: true
   adapter_checkpoint_dir: null
-  test_lr: 0.00001
-  test_wd: 0.02
+  test_lr: 0.00005
+  test_wd: 0.05
   head_only_train: false # if true, will only train the classification head during few-shot learning
   head_only_test: false # if true, will only fine-tune the classification head during
 
@@ -77,9 +77,9 @@ deepconvnet:
   weight_decay: 0.0001
   checkpoint_file: null # if not null, will load model from this checkpoint
   test_lr: 0.0001
-  test_wd: 0.0001
+  test_wd: 0.001
   head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
-  head_only_test: true # if true, will only fine-tune the classification head during few-shot learning
+  head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
 
 peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
@@ -103,7 +103,7 @@ eegnet:
 test:
   n_epochs: 10
   shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
+  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
   models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 

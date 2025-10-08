@@ -57,23 +57,6 @@ class TestEngine:
         self.test_lr = test_lr
         self.test_wd = test_wd
         
-    def prepare_model_for_testing(self):
-        """
-        prepare model for testing
-        """
-        # remove the scheduler from engine to avoid confusion
-        self.engine.scheduler = None
-        
-        if self.test_lr is not None:
-            logger.info(f"Overriding test learning rate to {self.test_lr}")
-            for param_group in self.engine.optimizer.param_groups:
-                param_group["lr"] = self.test_lr
-
-        if self.test_wd is not None:
-            logger.info(f"Overriding test weight decay to {self.test_wd}")
-            for param_group in self.engine.optimizer.param_groups:
-                param_group["weight_decay"] = self.test_wd
-
         if self.head_only:  # freeze all but head
             if self.engine.model_str == "labram":
                 self.engine.model = freeze_all_but_head_labram(self.engine.model)
@@ -83,6 +66,7 @@ class TestEngine:
                 raise ValueError(f"head_only option not implemented for {self.engine.model_str}")
             
         
+      
 
     def _forward_with(self, params_dict, x):
         if self.engine.use_amp:
@@ -250,7 +234,8 @@ class TestEngine:
         fast = self._clone_as_leaf(base_params)
 
         # Create optimizer for adaptation
-        adapter_optimizer = self.optimizer_factory(fast)
+        adapter_optimizer = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
+        
 
         loss_s_list = []
         loss_q_list = []
@@ -416,9 +401,7 @@ class TestEngine:
         Returns:
             Dictionary mapping subject_id -> DataFrame of results
         """
-        # update learning rate and weight decay if specified
-        self.prepare_model_for_testing()
-        
+                
         
         logger.info(f"Testing {len(self.S_test)} subjects with {n_epochs} epochs")
         all_results = {}

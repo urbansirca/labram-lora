@@ -349,9 +349,13 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
-        use_wandb=exp_cfg.get("log_to_wandb"),
+        use_wandb=exp_cfg.get("log_to_wandb_test", False),
         wandb_prefix="test",
-        run_size = 100,
+        run_size=100,
+        save_dir=exp_cfg.get("test", {}).get("save_dir_root", Path("results/test")) / model_str / experiment_name,
+        head_only=False,
+        # test_lr=hyperparameters.get("test_lr"),
+        # test_wd=hyperparameters.get("test_wd"),
     )
 
     return engine, tester
@@ -365,7 +369,7 @@ if __name__ == "__main__":
 
     test_cfg = config.get("test", {})
     try:
-        engine.train_alternating()
+        engine.meta_train()
         all_results = tester.test_all_subjects(
             shots_list= [0, 1, 2],
             n_epochs= 2,
