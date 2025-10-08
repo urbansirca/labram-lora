@@ -276,7 +276,8 @@ class MetaEngine(BaseEngine):
                 for name, param in zip(base_names, fast):
                     fast_dict[name] = param
                 logits_s = self._forward_with(fast_dict, Xs)
-                Ls = nn.functional.cross_entropy(logits_s, ys)
+                # Ls = nn.functional.cross_entropy(logits_s, ys)
+                Ls = nn.functional.cross_entropy(logits_s, ys, label_smoothing=0.05)
                 inner_losses.append(Ls.detach())
                 grads = torch.autograd.grad(
                     Ls, fast, create_graph=False, retain_graph=False, allow_unused=True
@@ -286,7 +287,8 @@ class MetaEngine(BaseEngine):
             for name, param in zip(base_names, fast):
                 fast_dict[name] = param
             logits_q = self._forward_with(fast_dict, Xq)
-            Lq = nn.functional.cross_entropy(logits_q, yq)
+            # Lq = nn.functional.cross_entropy(logits_q, yq)
+            Lq = nn.functional.cross_entropy(logits_q, yq, label_smoothing=0.05)
 
             grads_q = torch.autograd.grad(
                 Lq, fast, retain_graph=False, allow_unused=True
@@ -377,7 +379,8 @@ class MetaEngine(BaseEngine):
                     # enable grad just for inner step
                     with torch.enable_grad():
                         logits_s = self._forward_with(fast_dict, Xs)
-                        Ls = torch.nn.functional.cross_entropy(logits_s, ys)
+                        # Ls = torch.nn.functional.cross_entropy(logits_s, ys)
+                        Ls = torch.nn.functional.cross_entropy(logits_s, ys, label_smoothing=0.05)
                         grads = torch.autograd.grad(
                             Ls,
                             fast,
@@ -392,7 +395,8 @@ class MetaEngine(BaseEngine):
                     fast_dict[name] = param
                 with torch.no_grad():
                     logits_q = self._forward_with(fast_dict, Xq)
-                    Lq = torch.nn.functional.cross_entropy(logits_q, yq)
+                    # Lq = torch.nn.functional.cross_entropy(logits_q, yq)
+                    Lq = torch.nn.functional.cross_entropy(logits_q, yq, label_smoothing=0.05)
                     total_losses.append(Lq)
                     total_corrects.append((logits_q.argmax(1) == yq).sum())
                     total_count += yq.numel()

@@ -38,15 +38,15 @@ data:
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
-  meta_batch_size: 54
+  meta_batch_size: 16
   k_support: 5
-  q_query: 300         # or null for “all remaining”
-  q_eval: 300
-  inner_steps: 2
-  inner_lr: 3e-5
+  q_query: 160         # or null for “all remaining”
+  q_eval: 200
+  inner_steps: 5
+  inner_lr: 1e-5
   run_size: 100       # granularity for episode indexing
-  clip_grad_norm: 3.5  # torch.nn.utils.clip_grad_norm_
-  val_episodes_per_subject: 1
+  clip_grad_norm: null  # torch.nn.utils.clip_grad_norm_
+  val_episodes_per_subject: 3
 
 supervised:
   train_batch_size: 125
@@ -70,18 +70,22 @@ labram:
   lora: true
   # lr: 2e-4 
   # weight_decay: 1e-4
-  lora_lr: 2e-4          
-  head_lr: 5e-4          
+  lora_lr: 3e-4          
+  head_lr: 2e-4          
   head_weight_decay: 5e-4
   sup_lr: 2e-4
   sup_wd: 5e-4
   adapter_checkpoint_dir: # "/home/usirca/workspace/labram-lora/weights/checkpoints/labram_lr0.002_wd0.002_AdamW_CosineAnnealingLR_191909/final_checkpoint_e60_acc0.788"
+  test_lr: 0.00001
+  test_wd: 0.02
+  head_only_train: false # if true, will only train the classification head during few-shot learning
+  head_only_test: false # if true, will only fine-tune the classification head during
 
 peft_config:
-  r: 2
+  r: 4
   lora_alpha: 16
-  lora_dropout: 0.1
-  target_modules: ["qkv", "fc1", "proj"]
+  lora_dropout: 0.05
+  target_modules: ["qkv","proj","fc1","fc2"]
 
 eegnet:
   lr: 0.001
@@ -100,6 +104,8 @@ deepconvnet:
   sup_wd: 0.001
   
 test:
-  shots_list: [0, 1, 2, 3, 4, 5, 10, 25, 50]
   n_epochs: 10
-  save_dir: "results/test"
+  shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 5  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
