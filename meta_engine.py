@@ -1,7 +1,4 @@
-import json
 import logging
-import time
-import math
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Callable
@@ -83,6 +80,7 @@ class MetaEngine(BaseEngine):
         optimizer_factory: Callable[[nn.Module], torch.optim.Optimizer],
         scheduler_factory: Callable[[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]],
         # episode design
+        meta_batch_size: int,
         k_support: int,
         q_query: Optional[int],
         q_eval: Optional[int],
@@ -122,7 +120,7 @@ class MetaEngine(BaseEngine):
             checkpoint_dir=checkpoint_dir,
         )
 
-        self.meta_iterations = int(meta_iterations)
+        self.meta_iterations = meta_iterations
         self.validate_every = validate_every
         self.validate_meta_every = validate_meta_every
 
@@ -140,6 +138,7 @@ class MetaEngine(BaseEngine):
         self.scheduler_factory = scheduler_factory
 
         # episode design
+        self.T = meta_batch_size
         self.K = k_support
         self.Q = q_query
         self.Q_eval = q_eval
@@ -351,8 +350,6 @@ class MetaEngine(BaseEngine):
             for _ in range(max(1, E)):
                 sup_idx, que_runs = sample_support(sid, self.val_epi, self.K, rng)
                 que_idx = sample_query(sid, que_runs, self.val_epi, self.Q_eval, rng)
-                # sup_idx, que_runs = sample_support_no_run(sid, self.val_epi, self.K, self.rng)
-                # que_idx = sample_query_no_run(sid, que_runs, self.val_epi, self.Q_eval, self.rng)  
 
                 Xs, ys = fetch_by_indices(
                     self.val_ds,

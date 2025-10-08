@@ -253,6 +253,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
             raise ValueError(f"Unsupported supervised scheduler: {SUP_SCHED}")
 
     # -------- episode knobs ---------------
+    META_BATCH_SIZE = int(meta_cfg["meta_batch_size"])
     K_SUPPORT = int(meta_cfg["k_support"])
     Q_QUERY = meta_cfg.get("q_query")  # can be None
     Q_EVAL = meta_cfg.get("q_eval")
@@ -265,7 +266,6 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     # labram-specific shaping knobs used by MetaEngine’s fetch path
     n_patches_labram = int(data_cfg.get("n_patches_labram"))
-    patch_len = int(data_cfg.get("patch_length"))
     
     electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
 
@@ -324,6 +324,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
         # episode design
+        meta_batch_size=META_BATCH_SIZE,
         k_support=K_SUPPORT,
         q_query=Q_QUERY,
         q_eval=Q_EVAL,

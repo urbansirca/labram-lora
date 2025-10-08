@@ -34,7 +34,6 @@ data:
   num_classes: 2
   # EEGLab/Labram shaping
   n_patches_labram: 4
-  patch_length: 200
   samples: 800                    # 800 for EEGNet (200 for Labram) #TODO: pofukani samples
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
