@@ -25,7 +25,7 @@ experiment:
   early_stopping_delta: 0.001
 
 
-  epochs: 20
+  epochs: 3
   train_after_stopping: false # if true, will train the model after early stopping
   train_after_stopping_epochs: 3
 
@@ -43,8 +43,8 @@ data:
   path: "data/preprocessed/KU_mi_labram_preprocessed_normalized.h5"      # <-- set this
   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
   # choose exactly one of the two lines below:
-  leave_out: #[1, 2]             # explicit test subjects 
-  m_leave_out: 2 #                  # OR: number of subjects to leave out at random, set to null for lomso
+  leave_out: [20, 39]             # explicit test subjects 
+  m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
   train_proportion: 0.97   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
   num_classes: 2 
@@ -67,11 +67,19 @@ labram:
   weight_decay: 0.002
   lora: true
   adapter_checkpoint_dir: null
+  test_lr: 0.00001
+  test_wd: 0.02
+  head_only_train: false # if true, will only train the classification head during few-shot learning
+  head_only_test: false # if true, will only fine-tune the classification head during
 
 deepconvnet:
   lr: 0.001
   weight_decay: 0.0001
-
+  checkpoint_file: null # if not null, will load model from this checkpoint
+  test_lr: 0.0001
+  test_wd: 0.0001
+  head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
+  head_only_test: true # if true, will only fine-tune the classification head during few-shot learning
 
 peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
   r: 2
@@ -95,6 +103,11 @@ eegnet:
 test:
   n_epochs: 10
   shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 5  # number of repeats for few-shot learning (with different random samples each time)
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
   models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
+
+lomso:
+  max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
+  test_only: true # if true, will only run testing without training
+  skip_models: ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
