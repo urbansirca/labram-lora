@@ -41,10 +41,6 @@ class TestEngine:
         self.S_test = test_ds.subject_ids
         self.test_ds = test_ds
         self.test_epi = build_episode_index(self.test_ds, run_size=run_size)
-        
-        self._allow_trainable = {
-            n for n, p in self.engine.model.named_parameters() if p.requires_grad
-        }
 
         self.use_wandb = use_wandb
         self.wandb_prefix = wandb_prefix
@@ -64,6 +60,11 @@ class TestEngine:
                 self.engine.model = freeze_all_but_head_deepconvnet(self.engine.model)
             else:
                 raise ValueError(f"head_only option not implemented for {self.engine.model_str}")
+            
+        
+        self._allow_trainable = {
+            n for n, p in self.engine.model.named_parameters() if p.requires_grad
+        }
             
         
       
@@ -241,9 +242,11 @@ class TestEngine:
         loss_q_list = []
         accuracy_s_list = []
         accuracy_q_list = []
+        runtime_list = []
 
         # Adaptation loop
         for epoch in range(n_epochs):
+            epoch_t0 = time.time()
             adapter_optimizer.zero_grad()
 
             # Create parameter dict for functional call
@@ -270,6 +273,7 @@ class TestEngine:
 
             loss_q_list.append(loss_q.item())
             accuracy_q_list.append(accuracy_q.item())
+            runtime_list.append(time.time() - epoch_t0)
 
             if self.use_wandb:
                 self.engine.wandb_run.log(
@@ -303,6 +307,7 @@ class TestEngine:
             "loss_q": loss_q_list,
             "n_support": len(ys),
             "n_query": len(yq),
+            "epoch_runtimes": runtime_list,
         }
 
     def test_subject_adaptation(
@@ -346,6 +351,7 @@ class TestEngine:
                         * n_epochs,  # No support set
                         "support_loss_evolution": [float("nan")]
                         * n_epochs,  # No support set
+                        "epoch_time_evolution": [0.0] * n_epochs,  # No adaptation time
                     }
                 )
             else:
@@ -373,6 +379,7 @@ class TestEngine:
                         "loss_evolution": result["loss_q"],
                         "support_accuracy_evolution": result["accuracy_s"],
                         "support_loss_evolution": result["loss_s"],
+                        "epoch_time_evolution": result["epoch_runtimes"],
                     }
                 )
 
@@ -447,6 +454,7 @@ class TestEngine:
                             row[f"acc_test_e{ei+1}"] = acc_test[ei]
                             row[f"loss_supp_e{ei+1}"] = loss_supp[ei]
                             row[f"loss_q_e{ei+1}"] = loss_q[ei]
+                            row[f"epoch_time_e{ei+1}"] = 0.0  # No adaptation time
                         repetition_rows.append(row)
                         per_shot_records.append(row)
                 else:
@@ -466,6 +474,7 @@ class TestEngine:
                         acc_s = run.get("accuracy_s", [])
                         loss_q = run.get("loss_q", [])
                         loss_s = run.get("loss_s", [])
+                        epoch_runtimes = run.get("epoch_runtimes", [])
 
                         row = {
                             "subject_id": subject_id,
@@ -496,6 +505,9 @@ class TestEngine:
                             )
                             row[f"loss_q_e{ei+1}"] = (
                                 loss_q[ei] if ei < len(loss_q) else float("nan")
+                            )
+                            row[f"epoch_time_e{ei+1}"] = (
+                                epoch_runtimes[ei] if ei < len(epoch_runtimes) else float("nan")
                             )
                         repetition_rows.append(row)
                         per_shot_records.append(row)

@@ -1,8 +1,8 @@
 import pandas as pd
 import pathlib
 
-root_dir = pathlib.Path("lomso")
-models = ["deepconvnet", "labram"]
+root_dir = pathlib.Path("test_only_lomso")
+models = ["deepconvnet", "labram_head_only", "labram_full_model"]
 
 
 # loop over models and folds, collect results
