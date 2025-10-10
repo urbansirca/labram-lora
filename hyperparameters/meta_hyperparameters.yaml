@@ -25,7 +25,7 @@ experiment:
 
 
 data:
-  path: data/preprocessed/KU_mi_labram_preprocessed_normalized.h5
+  path: data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5
   subjects: #[1,2,3,4]   # optional; else n_subjects used
   leave_out: [1,2,3,4,5,6]                # test set subjects
   # m_leave_out: 2                  # optional multi-LOO size
@@ -101,6 +101,8 @@ deepconvnet:
   sup_wd: 0.001
   
 test:
-  shots_list: [0, 1, 2, 3, 4, 5, 10, 25, 50]
-  n_epochs: 10
-  save_dir: "results/test"
+  n_epochs: 2
+  shots: [0, 1, 2, 3, 4] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 1  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  save_dir_root: "results_meta/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name

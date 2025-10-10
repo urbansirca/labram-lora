@@ -83,6 +83,7 @@ class MetaEngine(BaseEngine):
         optimizer_factory: Callable[[nn.Module], torch.optim.Optimizer],
         scheduler_factory: Callable[[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler._LRScheduler]],
         # episode design
+        meta_batch_size: int,
         k_support: int,
         q_query: Optional[int],
         q_eval: Optional[int],
@@ -140,6 +141,7 @@ class MetaEngine(BaseEngine):
         self.scheduler_factory = scheduler_factory
 
         # episode design
+        self.T = meta_batch_size
         self.K = k_support
         self.Q = q_query
         self.Q_eval = q_eval

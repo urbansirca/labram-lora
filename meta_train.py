@@ -141,16 +141,19 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     # -------- optim/sched factories ----
     if model_str == 'deepconvnet':
+        hyperparameters = deepconvnet_hp
         lr = float(deepconvnet_hp.get("lr"))
         wd = float(deepconvnet_hp.get("weight_decay"))
         sup_lr = float(deepconvnet_hp.get("sup_lr"))
         sup_wd = float(deepconvnet_hp.get("sup_wd"))
     elif model_str == 'labram':
-        lr = float(labram_hp.get("lr"))
-        wd = float(labram_hp.get("weight_decay"))
+        hyperparameters = labram_hp
+        # lr = float(labram_hp.get("lr"))
+        # wd = float(labram_hp.get("weight_decay"))
         sup_lr = float(labram_hp.get("sup_lr"))
         sup_wd = float(labram_hp.get("sup_wd"))
     elif model_str == 'eegnet':
+        hyperparameters = eegnet_hp
         lr = float(eegnet_hp.get("lr"))
         wd = float(eegnet_hp.get("weight_decay"))
         sup_lr = float(eegnet_hp.get("sup_lr"))
@@ -158,8 +161,19 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     else:
         raise ValueError(f"Unsupported model: {model_str}")
 
-    if model_str in ['eegnet', 'deepconvnet']:
-        def make_optimizer(params: Iterable[torch.nn.Parameter]):
+    if model_str in ['eegnet', 'deepconvnet'] or 1:
+        def make_optimizer(params: Iterable[torch.nn.Parameter], lr=None, wd=None):
+            if lr is None:
+                if model_str == 'labram':
+                    lr = float(labram_hp.get("lora_lr"))
+                else:
+                    lr = float(hyperparameters.get("lr"))
+            if wd is None:
+                if model_str == 'labram':
+                    wd = float(0)
+                else:
+                    wd = float(hyperparameters.get("weight_decay"))
+                
             opt = OPTIMIZER.lower()
             if opt == "adamw":
                 return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
@@ -168,7 +182,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
             else:
                 raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
     elif model_str == 'labram':
-        def make_optimizer(params: Iterable[torch.nn.Parameter]):
+        def make_optimizer(params: Iterable[torch.nn.Parameter], lr=None, wd=None):
             opt = OPTIMIZER.lower()
 
             allowed_ids = {id(p) for p in params}
@@ -182,7 +196,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
                     # Any non-head trainable we expect to be LoRA;
                     lora_or_no_decay.append(p)
 
-            base = (labram_hp or eegnet_hp) or {}
+            base = labram_hp
             head_lr = float(base.get("head_lr"))
             head_wd = float(base.get("head_weight_decay"))
             lora_lr = float(base.get("lora_lr"))
@@ -194,7 +208,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
                 groups.append({"params": lora_or_no_decay, "lr": lora_lr, "weight_decay": 0.0, "name": "lora_no_decay"})
             
             if opt == "adamw":
-                # pprint(groups)
+                print(groups)
                 return torch.optim.AdamW(groups)
             elif opt == "adam":
                 return torch.optim.Adam(groups)
@@ -218,15 +232,6 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
             return None
         else:
             raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
-
-    def make_optimizer_tester(params: Iterable[torch.nn.Parameter]):
-        opt = OPTIMIZER.lower()
-        if opt == "adamw":
-            return torch.optim.AdamW(list(params), lr=lr, weight_decay=wd)
-        elif opt == "adam":
-            return torch.optim.Adam(list(params), lr=lr, weight_decay=wd)
-        else:
-            raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 
     def make_sup_optimizer(params: Iterable[torch.nn.Parameter]):
         opt = SUP_OPT.lower()
@@ -253,6 +258,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
             raise ValueError(f"Unsupported supervised scheduler: {SUP_SCHED}")
 
     # -------- episode knobs ---------------
+    META_BATCH_SIZE=int(meta_cfg["meta_batch_size"])
     K_SUPPORT = int(meta_cfg["k_support"])
     Q_QUERY = meta_cfg.get("q_query")  # can be None
     Q_EVAL = meta_cfg.get("q_eval")
@@ -324,6 +330,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
         # episode design
+        meta_batch_size=META_BATCH_SIZE,
         k_support=K_SUPPORT,
         q_query=Q_QUERY,
         q_eval=Q_EVAL,
@@ -354,8 +361,8 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         run_size=100,
         save_dir=exp_cfg.get("test", {}).get("save_dir_root", Path("results/test")) / model_str / experiment_name,
         head_only=False,
-        # test_lr=hyperparameters.get("test_lr"),
-        # test_wd=hyperparameters.get("test_wd"),
+        test_lr=hyperparameters.get("test_lr"),
+        test_wd=hyperparameters.get("test_wd"),
     )
 
     return engine, tester
@@ -369,10 +376,11 @@ if __name__ == "__main__":
 
     test_cfg = config.get("test", {})
     try:
-        engine.meta_train()
+        # engine.meta_train()
         all_results = tester.test_all_subjects(
-            shots_list= [0, 1, 2],
-            n_epochs= 2,
+            shots_list= config.get("test").get("shots"),
+            n_epochs= config.get("test").get("n_epochs"),
+            n_repeats=config.get("test").get("n_repeats"),
         )
     finally:
         engine.train_ds.close()
