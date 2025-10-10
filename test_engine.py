@@ -263,7 +263,8 @@ class TestEngine:
             # Backward pass
             loss_s.backward()
             adapter_optimizer.step()
-
+            
+            runtime_list.append(time.time() - epoch_t0)
             # Evaluate on query set
             fast_dict = dict(zip(base_names, fast))
             with torch.no_grad():
@@ -273,7 +274,7 @@ class TestEngine:
 
             loss_q_list.append(loss_q.item())
             accuracy_q_list.append(accuracy_q.item())
-            runtime_list.append(time.time() - epoch_t0)
+            
 
             if self.use_wandb:
                 self.engine.wandb_run.log(

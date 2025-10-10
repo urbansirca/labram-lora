@@ -188,7 +188,8 @@ class Engine(BaseEngine):
             # ---------------- save regular checkpoints ----------------
             self.save_regular_checkpoint(joined=False)
             
-            if self.save_best_checkpoints:
+            if self.save_best_checkpoints and self.metrics.val_accuracy >= self.best_val_accuracy:
+                self.best_val_accuracy = self.metrics.val_accuracy
                 self.checkpoint(name="best_val_checkpoint")
 
         # ---------------- save the final checkpoint ----------------
@@ -221,6 +222,10 @@ class Engine(BaseEngine):
                 self.save_regular_checkpoint(joined=True)
 
             self.checkpoint(name=f"FINAL_e{self.metrics.epoch}")
+        
+        with open(self.checkpoint_root / "runtimes.json", "w") as f:
+            json.dump(self.runtime_list, f)
+
 
     def check_early_stopping(self) -> bool:
         """Check if early stopping criteria is met. Returns True if should stop."""

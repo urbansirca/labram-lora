@@ -6,6 +6,7 @@ import yaml
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import numpy
 
 from engine import Engine
 from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
@@ -77,10 +78,14 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     final_conv_length="auto",
                 )
             if hyperparameters["checkpoint_file"] is not None:
-                state_dict = torch.load(hyperparameters["checkpoint_file"], map_location="cpu")
-                model.load_state_dict(state_dict)
-                logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
-
+                try:
+                    state_dict = torch.load(hyperparameters["checkpoint_file"], map_location="cpu")
+                    model.load_state_dict(state_dict)
+                    logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
+                except Exception as e:
+                    
+                    raise ValueError(f"Failed to load checkpoint file {hyperparameters['checkpoint_file']}: {e}")
+                
             if hyperparameters["head_only_train"]:
                 assert hyperparameters["checkpoint_file"] is not None, "When using head_only_train, a checkpoint_file must be specified to load the pretrained weights from."
                 model = freeze_all_but_head_deepconvnet(model)
@@ -103,6 +108,19 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 ),
             )
             model_str = "eegnet"
+            
+        elif model_name == "mirepnet":
+            hyperparameters = config.get("mirepnet", {})
+            model_str = "mirepnet"
+            from models.mirepnet import make_mirepnet
+            model = make_mirepnet(
+                use_lora=hyperparameters.get("use_lora"),
+                lora_config=config.get("peft_config"),
+            )
+            if hyperparameters["head_only_train"]:
+                logger.warning("head_only_train is not implemented for MIREPNet yet.")
+                raise NotImplementedError
+            
         else:
             raise ValueError("Invalid model")
 
@@ -165,10 +183,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     logger.info(f"Test subjects:  {sm.S_test}")
 
     # ---- datasets ----
-    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
-    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
-    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
-    train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val)
+    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train, select_mirepnet_45=(model_str=="mirepnet"))
+    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val, select_mirepnet_45=(model_str=="mirepnet"))
+    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test, select_mirepnet_45=(model_str=="mirepnet"))
+    train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val, select_mirepnet_45=(model_str=="mirepnet"))
 
 
     # ---------------- loaders ----------------
@@ -281,6 +299,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     trial_len = data_cfg.get("trial_length", data_cfg.get("samples", 800))
     n_patches_labram = data_cfg.get("n_patches_labram") if model_str == "labram" else None
     patch_len = data_cfg.get("patch_length") if model_str == "labram" else None
+    
+
+
+    checkpoint_dir = Path(str(exp_cfg.get("checkpoint_dir") or (Path(__file__).parent / "weights" / "checkpoints" / experiment_name)))
 
     engine = Engine(
         # --- BASE ---
@@ -301,7 +323,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
         save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
         save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
-        checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints" / experiment_name),
+        checkpoint_dir=checkpoint_dir,
         # --- SPECIFIC ---
         n_epochs=N_EPOCHS,
         # data loaders

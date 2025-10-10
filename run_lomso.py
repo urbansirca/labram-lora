@@ -1,4 +1,3 @@
-import argparse
 import copy
 import itertools
 import random
@@ -117,19 +116,22 @@ def run_lomso(config_path: str):
     shots_list = base_cfg.get("test", {}).get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
     n_epochs = base_cfg.get("test", {}).get("n_epochs", 10)
     n_repeats = base_cfg.get("test", {}).get("n_repeats", 10)
-    models = base_cfg.get("test", {}).get("models", ["deepconvnet", "labram"])
+    models = base_cfg.get("test", {}).get("models")
 
     results = {}
 
     if not test_only:
         lomso_root = Path("lomso")
     else:
-        lomso_root = Path("bug_fix")
+        lomso_root = Path("test_only_lomso")
         checkpoint_root = Path("lomso_supervised") # I renamed it from lomso --> lomso_supervised to avoid confusion
     # if lomso_root.exists():
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
+    subdir = "mirepnet"
+    lomso_root = lomso_root / subdir
+    lomso_root.mkdir(parents=True, exist_ok=True)
     for model_name in models:
         logger.info(f"Running LOMSO for model: {model_name}")
         # skip deepconvnet
@@ -137,7 +139,6 @@ def run_lomso(config_path: str):
             logger.info(f"Skipping {model_name} for now")
             continue
         
-        # for head_only in [True, False]:
         
         for fold_idx, test_pair in enumerate(folds, start=1):
             # if fold_idx in [1,2,3]:
@@ -152,6 +153,8 @@ def run_lomso(config_path: str):
             # set model in experiment cfg
             cfg.setdefault("experiment", {})["model"] = model_name
             
+            if model_name == "mirepnet":
+                cfg.setdefault("data", {})["path"] = "data/preprocessed/KU_mi_labram_preprocessed_trial_norm_NG_format.h5"
 
             # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
             cfg.setdefault("data", {})["leave_out"] = list(test_pair)
@@ -159,15 +162,15 @@ def run_lomso(config_path: str):
             # set experiment name so checkpoints are separated per-fold
             experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
             
-            # head_dir = "head-only" if head_only else "full-model"
-
             dest = lomso_root / model_name / experiment_name
             dest.mkdir(parents=True, exist_ok=True)
+            
+            cfg.setdefault("experiment", {})["checkpoint_dir"] = str(dest)
 
             # if any(dest.iterdir()):
             #     raise ValueError(f"Directory {dest} already exists and is not empty. Please move or delete it before running.")
 
-            if test_only:
+            if test_only and model_name in ["deepconvnet", "labram"]:
                 # get checkpoint file from lomso_root
                 ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best")
                 if model_name == "deepconvnet":
@@ -176,10 +179,7 @@ def run_lomso(config_path: str):
                     cfg.setdefault("labram", {})["adapter_checkpoint_dir"] = str(ckpt_file)
                 else:
                     raise ValueError(f"Unknown model name {model_name}")
-                
-                # update lr to test lr
-                # cfg.setdefault(model_name)["lr"] = base_cfg.get(model_name).get("test_lr")
-                
+                                
             # create engine and tester
             engine, tester = get_engine(
                 cfg, with_tester=True, experiment_name=experiment_name
@@ -228,11 +228,13 @@ def run_lomso(config_path: str):
             except Exception:
                 pass
 
-    outp = lomso_root / "lomso.yaml"
-    outp.parent.mkdir(parents=True, exist_ok=True)
-    with open(outp, "w") as f:
-        yaml.safe_dump(results, f)
+        outp = lomso_root / "lomso.yaml"
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        with open(outp, "w") as f:
+            yaml.safe_dump(results, f)
 
 
 if __name__ == "__main__":
-    run_lomso("hyperparameters/hyperparameters.yaml", ) # set max_folds to limit number of folds for development purposes
+    run_lomso("hyperparameters/hyperparameters.yaml") # set max_folds to limit number of folds for development purposes
+    
+    

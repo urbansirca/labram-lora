@@ -65,8 +65,10 @@ class BaseEngine:
         self.save_regular_checkpoints_interval = int(save_regular_checkpoints_interval)
         self.save_best_checkpoints = save_best_checkpoints
         self.save_final_checkpoint = save_final_checkpoint
-        self.checkpoint_root = Path(checkpoint_dir) if checkpoint_dir else (Path(__file__).parent / "weights" / "checkpoints" / self.experiment_name)
+        self.checkpoint_root = Path(checkpoint_dir) # if checkpoint_dir else (Path(__file__).parent / "weights" / "checkpoints" / self.experiment_name)
         self.checkpoint_root.mkdir(parents=True, exist_ok=True)
+        
+        self.runtime_list = []
 
         # dump config for reproducibility
         if self.config_for_logging is not None:
@@ -98,6 +100,7 @@ class BaseEngine:
         )
         line += f" | Runtime: {time.time() - self.start_time:.2f}s"
         logger.info(line)
+        self.runtime_list.append(time.time() - self.start_time)
         self.start_time = time.time()
         # wandb
         if self.use_wandb and self.wandb_run is not None:
