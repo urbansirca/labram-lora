@@ -74,7 +74,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             model = DeepConvNet(
                     in_chans=data_cfg.get("input_channels", 62),
                     n_classes=data_cfg.get("num_classes", 2),
-                    input_time_length=1000,#data_cfg.get("samples", 800),
+                    input_time_length=data_cfg.get("samples", 800),
                     final_conv_length="auto",
                 )
             if hyperparameters["checkpoint_file"] is not None:
@@ -83,6 +83,13 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     model.load_state_dict(state_dict)
                     logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
                 except Exception as e:
+                    # Handle NG models
+                    model = DeepConvNet(
+                        in_chans=data_cfg.get("input_channels", 62),
+                        n_classes=data_cfg.get("num_classes", 2),
+                        input_time_length=1000,
+                        final_conv_length="auto",
+                    )
                     torch.serialization.add_safe_globals([numpy.core.multiarray.scalar])
                     torch.serialization.safe_globals([numpy.core.multiarray.scalar])
                     checkpoint = torch.load(hyperparameters["checkpoint_file"], map_location="cpu", weights_only=False)

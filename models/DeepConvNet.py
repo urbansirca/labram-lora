@@ -273,11 +273,11 @@ class DeepConvNet(nn.Module):
         # If input has patches dimension, flatten it into time
         if x.ndim == 4:
             # (B, C, P, T) -> (B, C, P*T)
-            print("dimension is ", x.shape)
-            print("DeepConvNet reshaping input from (B,C,P,T) to (B,C,P*T)")
+            # print("dimension is ", x.shape)
+            # print("DeepConvNet reshaping input from (B,C,P,T) to (B,C,P*T)")
             b, c, p, t = x.shape
             x = x.reshape(b, c, p * t)
-            print("dimension is ", x.shape)
+            # print("dimension is ", x.shape)
 
         elif x.ndim != 3:
             raise ValueError(
