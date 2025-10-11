@@ -201,3 +201,10 @@ BCI Database/
 weights/
 *.err
 *.out
+
+
+lomso.yaml
+lomso/
+bug_fix/
+test_only_lomso/
+ng_testing/

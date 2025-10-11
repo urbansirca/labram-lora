@@ -107,8 +107,9 @@ deepconvnet:
   head_only_test: false 
   
 test:
-  n_epochs: 2
-  shots: [0, 1, 2, 3, 4] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 1  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  n_epochs: 10
+  shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results_meta/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
+

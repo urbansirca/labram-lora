@@ -74,7 +74,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             model = DeepConvNet(
                     in_chans=data_cfg.get("input_channels", 62),
                     n_classes=data_cfg.get("num_classes", 2),
-                    input_time_length=data_cfg.get("samples", 800),
+                    input_time_length=1000,#data_cfg.get("samples", 800),
                     final_conv_length="auto",
                 )
             if hyperparameters["checkpoint_file"] is not None:
@@ -83,8 +83,24 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     model.load_state_dict(state_dict)
                     logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
                 except Exception as e:
-                    
-                    raise ValueError(f"Failed to load checkpoint file {hyperparameters['checkpoint_file']}: {e}")
+                    torch.serialization.add_safe_globals([numpy.core.multiarray.scalar])
+                    torch.serialization.safe_globals([numpy.core.multiarray.scalar])
+                    checkpoint = torch.load(hyperparameters["checkpoint_file"], map_location="cpu", weights_only=False)
+
+                    # Extract the checkpoint state dictionary
+                    checkpoint_state_dict = checkpoint["model_state_dict"]
+
+                    # Add the "model." prefix to all keys
+                    checkpoint_state_dict_renamed = {
+                        f"model.{key}" if not key.startswith("model.") else key: value
+                        for key, value in checkpoint_state_dict.items()
+                    }
+
+                    # Load the renamed state dict into the model
+                    model.load_state_dict(checkpoint_state_dict_renamed)
+                    logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']} with model_state_dict")
+
+
                 
             if hyperparameters["head_only_train"]:
                 assert hyperparameters["checkpoint_file"] is not None, "When using head_only_train, a checkpoint_file must be specified to load the pretrained weights from."

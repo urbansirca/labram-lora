@@ -132,38 +132,6 @@ def load_labram_with_adapter(adapter_dir: str, device="cpu"):
     return model
 
 
-def freeze_all_but_head(model):
-    """
-    Freeze all parameters in the model except those in model.head.
-    Works for PEFT models where modules_to_save=['head'].
-    """
-    
-    print(
-        f"Model parameters before freezing: {sum(p.numel() for p in model.parameters() if p.requires_grad)} out of {sum(p.numel() for p in model.parameters())}"
-    )
-
-    # Freeze everything
-    for p in model.parameters():
-        p.requires_grad = False
-
-    # Unfreeze head (handles both direct and nested cases)
-    head = getattr(model, "head", None)
-    if head is None and hasattr(model, "base_model") and hasattr(model.base_model, "model"):
-        head = getattr(model.base_model.model, "head", None)
-
-    if head is None:
-        raise AttributeError("Couldn't find model.head to unfreeze.")
-
-    for p in head.parameters():
-        p.requires_grad = True
-        
-    print(
-        f"Model parameters after freezing: {sum(p.numel() for p in model.parameters() if p.requires_grad)} out of {sum(p.numel() for p in model.parameters())}"
-    )
-
-    model.train()
-    return model
-
 def freeze_all_but_head_labram(model):
     """
     Freeze all params; unfreeze only the classification head.
