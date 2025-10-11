@@ -114,6 +114,7 @@ def run_lomso(config_path: str):
 
         cfg = copy.deepcopy(base_cfg)
         
+        cfg.setdefault("data", {})["dataset"] = "data/preprocessed/KU_mi_labram_preprocessed_trial_norm_NG_format.h5"
         # just for now
         # cfg.setdefault(model_name, {})["head_only_test"] = head_only
 
