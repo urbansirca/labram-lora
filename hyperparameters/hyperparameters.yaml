@@ -115,10 +115,10 @@ eegnet:
   F2: 16
 
 test:
-  n_epochs: 10
+  n_epochs: 5
   shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 3  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["deepconvnet", "labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 lomso:

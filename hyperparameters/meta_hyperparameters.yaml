@@ -3,7 +3,7 @@ experiment:
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  meta_iterations: 800
+  meta_iterations: 700
   validate_every: 30
   optimizer: AdamW       # Adam | AdamW
   scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
@@ -27,9 +27,9 @@ experiment:
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5
   subjects: #[1,2,3,4]   # optional; else n_subjects used
-  leave_out: [1,2,3,4,5,6]                # test set subjects
-  # m_leave_out: 2                  # optional multi-LOO size
-  train_proportion: 0.9
+  leave_out: [20, 39]             # explicit test subjects 
+  m_leave_out: #2 #                  # optional multi-LOO size
+  train_proportion: 0.97
   n_channels: 62
   num_classes: 2
   # EEGLab/Labram shaping
@@ -115,6 +115,6 @@ test:
 
 
 lomso:
-  max_folds: 5 # set to an integer to limit the number of folds for development purposes; if null, will use all folds
-  test_only: true # if true, will only run testing without training
-  skip_models: [] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
+  max_folds: 10 # set to an integer to limit the number of folds for development purposes; if null, will use all folds
+  test_only: false # if true, will only run testing without training
+  skip_models: ["deepconvnet"] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"

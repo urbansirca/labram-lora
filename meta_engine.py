@@ -607,3 +607,7 @@ class MetaEngine(BaseEngine):
             self.checkpoint(
                 name=f"final_checkpoint_i{self.metrics.iteration}_acc{acc_str}"
             )
+
+    def finish(self):
+        if self.use_wandb and self.wandb_run is not None:
+            self.wandb_run.finish()

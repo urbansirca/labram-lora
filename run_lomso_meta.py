@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from train import get_engine
+from meta_train import get_meta_engine
 
 
 logging.basicConfig(
@@ -129,7 +130,7 @@ def run_lomso(config_path: str):
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
-    subdir = "run1"
+    subdir = "meta_run1"
     lomso_root = lomso_root / subdir
     lomso_root.mkdir(parents=True, exist_ok=True)
     for model_name in models:
@@ -181,7 +182,7 @@ def run_lomso(config_path: str):
                     raise ValueError(f"Unknown model name {model_name}")
                                 
             # create engine and tester
-            engine, tester = get_engine(
+            engine, tester = get_meta_engine(
                 cfg, with_tester=True, experiment_name=experiment_name
             )
 
@@ -196,11 +197,11 @@ def run_lomso(config_path: str):
 
             # train
             if not test_only:
-                engine.train()
+                engine.meta_train()
 
             # run tests (tester.test_all_subjects uses the split's test subjects)
             all_results = tester.test_all_subjects(
-                shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats
+                shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats, use_cv_epoch_selection=False
             )
 
             results[f"{model_name}/{experiment_name}"] = {

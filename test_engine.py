@@ -235,7 +235,7 @@ class TestEngine:
         fast = self._clone_as_leaf(base_params)
 
         # Create optimizer for adaptation
-        print(self.test_lr, self.test_wd)
+        # print(self.test_lr, self.test_wd)
         adapter_optimizer = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
         
 
@@ -292,7 +292,7 @@ class TestEngine:
                     "subject_id": subject_id,
                     "n_shots": n_shots,
                     "n_repeat": rep,
-                    "epoch": epoch,
+                    "epoch": epoch + 1,
                     "n_support": len(ys),
                     "n_query": len(yq),
                     "loss_s": loss_s.item(),
@@ -312,7 +312,7 @@ class TestEngine:
             "epoch_runtimes": runtime_list,
         }
         
-    def adapt_with_cv_epoch_selection(
+    def _adapt_with_cv_epoch_selection(
         self,
         subject_id: int,
         n_shots: int,
@@ -322,382 +322,332 @@ class TestEngine:
         n_folds: Optional[int] = None,
         rep: Optional[int] = None,
     ):
-        """
-        For shots >= 6:
-        1) Perform stratified K-fold CV *on the support shots* to pick #epochs.
-            - Hold out ~20% per class for validation each fold (at least 1 per class and 2 total).
-            - Train on remaining support shots; after each epoch, evaluate on the fold's val split.
-        2) Choose the epoch with the highest *mean* val accuracy across folds (earliest on ties).
-        3) Retrain on the *full support set* for that many epochs.
-        4) Evaluate on the query set (all non-support trials).
+        import numpy as np
 
-        Returns:
-        {
-            "best_epochs": int,
-            "cv_mean_val_by_epoch": List[float],   # length max_epochs
-            "cv_std_val_by_epoch": List[float],    # length max_epochs
-            "final": { "accuracy_s": [...], "accuracy_q": [...], "loss_s": [...], "loss_q": [...],
-                    "n_support": int, "n_query": int, "epoch_runtimes": [...] }
-        }
-        """
-        assert n_shots >= 6, "Use CV epoch selection only when shots >= 6."
+        assert n_shots >= 2, "CV epoch selection is only used for shots >= 2."
 
-        # ----------------------------
-        # 0) Build support & query
-        # ----------------------------
-        sup_local_idx, que_local_idx = self._get_support_and_query_trials(subject_id, n_shots)
-        Xs, ys = fetch_by_indices(
-            self.test_ds, self.test_epi, subject_id, sup_local_idx,
-            self.engine.device, self.engine.non_blocking
-        )
-        Xq, yq = fetch_by_indices(
-            self.test_ds, self.test_epi, subject_id, que_local_idx,
-            self.engine.device, self.engine.non_blocking
-        )
+        sup_idx, que_idx = self._get_support_and_query_trials(subject_id, n_shots)
+        Xs, ys = fetch_by_indices(self.test_ds, self.test_epi, subject_id, sup_idx,
+                                self.engine.device, self.engine.non_blocking)
+        Xq, yq = fetch_by_indices(self.test_ds, self.test_epi, subject_id, que_idx,
+                                self.engine.device, self.engine.non_blocking)
 
-        # Stratify by class on the SUPPORT set
-        y_np = ys.detach().cpu().numpy()
-        classes = sorted(set(y_np.tolist()))
-        assert len(classes) >= 2, "Expected at least 2 classes to enforce class-wise holdout."
+        y_np = ys.detach().cpu().numpy().tolist()
+        # y_np are labels on the SUPPORT set (n_shots per class, or less if dataset is smaller)
+        classes = sorted(set(y_np))
+        per_class = {c: [i for i, yy in enumerate(y_np) if yy == c] for c in classes}
 
-        # Decide val counts per class (>= min_val_per_class)
-        import math
-        per_class_indices = {c: [i for i, yy in enumerate(y_np) if yy == c] for c in classes}
-        val_counts = {
-            c: max(min_val_per_class, int(round(val_frac * len(per_class_indices[c]))))
-            for c in classes
-        }
+        # Fail fast if any class has < 2 support samples — cannot split into 1 train / 1 val
+        for c, idxs in per_class.items():
+            if len(idxs) < 2:
+                # fallback: skip CV and just use max_epochs on full support
+                return {"best_epochs": max_epochs, "cv_mean_val_by_epoch": [float("nan")] * max_epochs,
+                        "final": self._adapt_and_evaluate(subject_id, n_shots, max_epochs, rep=rep)}
 
-        # Ensure *total* validation size at least 2 and at least 1 per class
-        total_val_min = sum(max(1, val_counts[c]) for c in classes)
-        if total_val_min < 2:
-            # if extremely small support, bump one class
-            big_class = max(classes, key=lambda c: len(per_class_indices[c]))
-            val_counts[big_class] = max(1, val_counts[big_class] + 1)
+        # Nominal per-class k, then cap to leave ≥1 train per class
+        val_counts = {}
+        for c, idxs in per_class.items():
+            n_c = len(idxs)
+            k = max(min_val_per_class, int(round(val_frac * n_c)))  # e.g., 20% ⇒ 0.4 of 2 ⇒ 0, then bumped to 1
+            k = min(k, n_c - 1)                                     # ensure at least 1 train remains
+            val_counts[c] = k
 
-        # Number of folds: rotate the held-out slices for each class
-        # If user didn't pass n_folds, default to min over classes of floor(n_class / val_count)
+        # Ensure total val size ≥ 2
+        if sum(val_counts.values()) < 2:
+            # bump the largest class by 1 if possible
+            big = max(classes, key=lambda cc: len(per_class[cc]))
+            if val_counts[big] < len(per_class[big]) - 1:
+                val_counts[big] += 1
+            else:
+                # if we truly can't reach 2 in total, skip CV (too tiny)
+                return {"best_epochs": max_epochs, "cv_mean_val_by_epoch": [float("nan")] * max_epochs,
+                        "final": self._adapt_and_evaluate(subject_id, n_shots, max_epochs, rep=rep)}
+
+
         if n_folds is None:
-            n_folds = max(2, min(
-                max(1, len(per_class_indices[c]) // max(1, val_counts[c])) for c in classes
-            ))
+            # per class: how many disjoint k-sized chunks fit
+            per_class_folds = []
+            for c, idxs in per_class.items():
+                k = val_counts[c]
+                # guard: k could be 0 if a class is empty (shouldn't happen after checks), but be safe
+                per_class_folds.append(len(idxs) // max(1, k))
+            n_folds = max(2, min(per_class_folds))
 
-        # Pre-shuffle per-class indices for reproducibility (use self.rng)
-        for c in classes:
-            self.rng.shuffle(per_class_indices[c])
-
-        # ----------------------------
-        # 1) CV loop: per-fold val curves
-        # ----------------------------
-        # Get trainable "base" params once (we will reset/clone per fold)
-        base_named = [(n, p) for n, p in self.engine.model.named_parameters() if n in self._allow_trainable]
+        base_named = [(n, p) for n, p in self.engine.model.named_parameters()
+                    if n in self._allow_trainable]
         base_names = [n for n, _ in base_named]
         base_params = [p for _, p in base_named]
 
         def _clone_fast():
             return [torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in base_params]
 
-        val_acc_per_epoch_across_folds = []
-
+        ##### FIND BEST EPOCH WITH CV #####
+        val_curves = []
         for fold in range(n_folds):
-            # Build fold's val/train splits (indices into Xs, ys)
-            val_idx, train_idx = [], []
+            val_idx, tr_idx = [], []
             for c in classes:
-                cls_idx = per_class_indices[c]
-                # rotating window for this fold
-                start = (fold * val_counts[c]) % len(cls_idx)
-                end = start + val_counts[c]
-                sel = cls_idx[start:end] if end <= len(cls_idx) else (cls_idx[start:] + cls_idx[: end % len(cls_idx)])
-                sel = sel[:val_counts[c]]  # guard
-                val_set = set(sel)
+                idx = per_class[c]
+                k = val_counts[c]
+                start = (fold * k) % len(idx) if len(idx) else 0
+                sel = idx[start:start + k] if start + k <= len(idx) else (idx[start:] + idx[:(start + k) % len(idx)])
+                sel = sel[:k]
+                sset = set(sel)
                 val_idx.extend(sel)
-                train_idx.extend([i for i in cls_idx if i not in val_set])
+                tr_idx.extend([i for i in idx if i not in sset])
 
-            # Tensors
-            Xtr, ytr = Xs[train_idx], ys[train_idx]
+            Xtr, ytr = Xs[tr_idx], ys[tr_idx]
             Xva, yva = Xs[val_idx], ys[val_idx]
 
-            # Fresh fast params + optimizer for this fold
             fast = _clone_fast()
-            adapter_optimizer = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
+            opt = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
 
-            fold_val_curve = []
-            for epoch in range(max_epochs):
-                adapter_optimizer.zero_grad()
-                fast_dict = dict(zip(base_names, fast))
-                # Train step on training partition of support
-                logits_tr = self._forward_with(fast_dict, Xtr)
-                loss_tr = nn.functional.cross_entropy(logits_tr, ytr)
-                loss_tr.backward()
-                adapter_optimizer.step()
+            fold_curve = []
+            for _epoch in range(max_epochs):
+                opt.zero_grad()
+                fd = dict(zip(base_names, fast))
+                logits_tr = self._forward_with(fd, Xtr)
+                loss = nn.functional.cross_entropy(logits_tr, ytr)
+                loss.backward()
+                opt.step()
 
-                # Val eval
-                fast_dict = dict(zip(base_names, fast))
+                fd = dict(zip(base_names, fast))
                 with torch.no_grad():
-                    logits_va = self._forward_with(fast_dict, Xva)
+                    logits_va = self._forward_with(fd, Xva)
                     acc_va = (logits_va.argmax(1) == yva).float().mean().item()
-                fold_val_curve.append(acc_va)
+                fold_curve.append(acc_va)
 
-            val_acc_per_epoch_across_folds.append(fold_val_curve)
+            val_curves.append(fold_curve)
 
-        # Aggregate across folds
-        import numpy as np
-        val_acc_matrix = np.array(val_acc_per_epoch_across_folds)  # shape: (n_folds, max_epochs)
-        mean_val_by_epoch = val_acc_matrix.mean(axis=0).tolist()
-        std_val_by_epoch = val_acc_matrix.std(axis=0, ddof=1 if n_folds > 1 else 0).tolist()
+        mean_by_epoch = np.array(val_curves).mean(axis=0)
+        std_by_epoch = np.array(val_curves).std(axis=0, ddof=1)
+        best_epochs = int(np.argmax(mean_by_epoch)) + 1
         
-        print("val accuracy matrix (folds x epochs):")
-        print(val_acc_matrix)
-        print(f"CV mean val acc by epoch: {mean_val_by_epoch}")
-        print(f"CV std val acc by epoch: {std_val_by_epoch}")
-
-        # Pick best epoch (1-based), earliest on ties
-        best_epoch_idx = int(np.argmax(mean_val_by_epoch)) + 1
-        print(f"Chosen best epoch (CV): {best_epoch_idx} with mean val acc {mean_val_by_epoch[best_epoch_idx-1]:.4f}")
-
-        # ----------------------------
-        # 2) Retrain on full support for best #epochs and evaluate on query
-        # ----------------------------
-        # Reuse your existing adaptation loop but with the chosen epoch count.
-        final_run = self._adapt_and_evaluate(subject_id, n_shots, best_epoch_idx, rep=rep)
+        fold_best_epochs = [int(np.argmax(curve)) + 1 for curve in val_curves] # list of best epochs per fold
+        within_range = (max(fold_best_epochs) - min(fold_best_epochs)) if fold_best_epochs else float("nan") # range of best epochs across folds
+        within_std = (np.std(fold_best_epochs, ddof=1) if len(fold_best_epochs) > 1 else 0.0) # this is std of best epoch across folds
         
-        print(f"Final run after CV-based epoch selection: {final_run}")
+        print("VAL CURVES (folds):", val_curves) # dim: n_folds x max_epochs
+        print("CV best epochs (folds):", fold_best_epochs) # dim: n_folds
+        print("CV actual accuracy of these epochs (folds):", [val_curves[i][be-1] for i, be in enumerate(fold_best_epochs)]) # dim n_folds
+        print("CV within range (folds):", within_range) # dim 1
+        print("CV within std (folds):", within_std) # dim 1
+        
+        print("mean val acc by epoch:", mean_by_epoch) # dim: max_epochs
+        print("std  val acc by epoch:", std_by_epoch)  # dim: max_epochs
 
+        # print("val curves", val_curves)
+        # print("mean by epoch", mean_by_epoch)
+        print("best epochs", best_epochs, "/", max_epochs, "for shots", n_shots, "subject", subject_id, "rep", rep, "found with CV with", n_folds, "folds")
+
+        ##### FINAL RUN WITH ALL SUPPORT for  #####
+        final = self._adapt_and_evaluate(subject_id, n_shots, best_epochs, rep=rep)
         return {
-            "best_epochs": best_epoch_idx,
-            "cv_mean_val_by_epoch": mean_val_by_epoch,
-            "cv_std_val_by_epoch": std_val_by_epoch,
-            "final": final_run,
-        }
+                "best_epochs": best_epochs,
+                "cv_mean_val_by_epoch": mean_by_epoch.tolist(),
+                "cv_std_val_by_epoch": std_by_epoch.tolist(),
+                "fold_best_epochs": fold_best_epochs,
+                "within_cv_range": within_range,
+                "within_cv_std": float(within_std),
+                "n_folds": len(val_curves),
+                "final": final,
+            }
 
-
-    def test_subject_adaptation(
+        
+    def _evaluate_subject_once(
         self,
         subject_id: int,
-        shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 25, 50],
-        n_epochs: int = 10,
-    ) -> pd.DataFrame:
-        """
-        Test adaptation for a single subject across different shots.
+        shots_list: List[int],
+        n_epochs: int,
+        rep: int,
+        use_cv_epoch_selection: bool = False,
+        cv_min_shots: int = 6,
+        cv_val_frac: float = 0.2,
+        cv_min_per_class: int = 1,
+        cv_n_folds: Optional[int] = None,
+    ) -> List[Dict]:
+        def _pad(seq, N, pad_val=float("nan")):
+            seq = list(seq)
+            return seq[:N] if len(seq) >= N else seq + [pad_val] * (N - len(seq))
+        def _pad_time(seq, N):
+            return _pad(seq, N, pad_val=0.0)
 
-        Args:
-            subject_id: Subject ID to test
-            shots_list: List of shot counts to test
-            n_epochs: Number of adaptation epochs (single value, not a list)
-
-        Returns:
-            DataFrame with shots as rows, columns for different metrics
-        """
-        logger.info(f"Testing subject {subject_id} with {n_epochs} epochs")
-
-        results = []
+        rows = []
 
         for n_shots in shots_list:
             if n_shots == 0:
-                # Zero-shot evaluation
-                result = self._zero_shot_evaluate(subject_id)
-                # For zero-shot, we only have final accuracy and loss
-                results.append(
-                    {
-                        "shots": n_shots,
-                        "epochs": n_epochs,
+                result = self._zero_shot_evaluate(subject_id, rep=rep)
+                acc_test = [result["accuracy"]] * n_epochs
+                loss_q = [result["loss"]] * n_epochs
+                acc_train = [float("nan")] * n_epochs
+                loss_supp = [float("nan")] * n_epochs
+
+                row = {
+                        "subject_id": subject_id,
+                        "shots": 0,
+                        "repetition": rep,
                         "final_accuracy": result["accuracy"],
                         "final_loss": result["loss"],
+                        "final_accuracy_train": float("nan"),
                         "n_samples": result["n_samples"],
-                        "n_support": 0,  # No support set for zero-shot
-                        "n_query": result["n_samples"],  # All samples are query
-                        "accuracy_evolution": [result["accuracy"]] * n_epochs,
-                        "loss_evolution": [result["loss"]] * n_epochs,
-                        "support_accuracy_evolution": [float("nan")]
-                        * n_epochs,  # No support set
-                        "support_loss_evolution": [float("nan")]
-                        * n_epochs,  # No support set
-                        "epoch_time_evolution": [0.0] * n_epochs,  # No adaptation time
+                        "n_support": 0,
+                        "n_query": result["n_samples"],
+                        "cv_used": False,
+                        "cv_chosen_best_epochs": float("nan"),
+                        "cv_n_folds": float("nan"),
+                        "cv_fold_best_epochs": json.dumps([]),
+                        "cv_within_cv_range": float("nan"),
+                        "cv_within_cv_std": float("nan"),
+                        "cv_mean_val_by_epoch": json.dumps([]),
+                        "cv_std_val_by_epoch": json.dumps([]),
                     }
+                for ei in range(n_epochs):
+                    row[f"acc_train_e{ei+1}"] = acc_train[ei]
+                    row[f"acc_test_e{ei+1}"]  = acc_test[ei]
+                    row[f"loss_supp_e{ei+1}"] = loss_supp[ei]
+                    row[f"loss_q_e{ei+1}"]    = loss_q[ei]
+                    row[f"epoch_time_e{ei+1}"] = 0.0
+                rows.append(row)
+                continue
+
+            # few-shot branch
+            available_trials = len(self.test_epi.subj_local_to_global[subject_id])
+            assert n_shots <= available_trials, (
+                f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
+            )
+
+            # optional CV epoch selection
+            if use_cv_epoch_selection and n_shots >= cv_min_shots:
+                cv_out = self._adapt_with_cv_epoch_selection(
+                    subject_id, n_shots, max_epochs=n_epochs,
+                    val_frac=cv_val_frac, min_val_per_class=cv_min_per_class,
+                    n_folds=cv_n_folds, rep=rep
                 )
+                run = cv_out["final"]
+                chosen_epochs = cv_out["best_epochs"]
+
+                cv_cols = {
+                    "cv_used": True,
+                    "cv_chosen_best_epochs": int(chosen_epochs),
+                    "cv_n_folds": int(cv_out.get("n_folds", 0)) if cv_out.get("n_folds") is not None else float("nan"),
+                    "cv_fold_best_epochs": json.dumps(cv_out.get("fold_best_epochs", [])),
+                    "cv_within_cv_range": float(cv_out.get("within_cv_range", float("nan"))),
+                    "cv_within_cv_std": float(cv_out.get("within_cv_std", float("nan"))),
+                    "cv_mean_val_by_epoch": json.dumps(cv_out.get("cv_mean_val_by_epoch", [])),
+                    "cv_std_val_by_epoch": json.dumps(cv_out.get("cv_std_val_by_epoch", [])),
+                }
             else:
-                # Check if we have enough trials for this many shots
-                available_trials = len(self.test_epi.subj_local_to_global[subject_id])
-                assert (
-                    n_shots <= available_trials
-                ), f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
-
-                ##################### Cross-validation-based epoch selection for n_shots >= 6 #####################
-                if n_shots >= 6:
-                    cv_out = self.adapt_with_cv_epoch_selection(
-                        subject_id,
-                        n_shots,
-                        max_epochs=n_epochs,      # typically 10
-                        val_frac=0.2,             # 20%
-                        min_val_per_class=1,      # ensure at least one per class
-                        n_folds=None,             # or set an explicit integer
-                    )
-                    result = cv_out["final"]      # same shape as _adapt_and_evaluate(...) return
-                    chosen_epochs = cv_out["best_epochs"]
-                else:
-                    result = self._adapt_and_evaluate(subject_id, n_shots, n_epochs)
-                    chosen_epochs = n_epochs
-                    cv_out = {} # empty dict if not using CV-based selection
+                run = self._adapt_and_evaluate(subject_id, n_shots, n_epochs, rep=rep)
+                chosen_epochs = n_epochs
+                cv_cols = {
+                    "cv_used": False,
+                    "cv_chosen_best_epochs": float("nan"),
+                    "cv_n_folds": float("nan"),
+                    "cv_fold_best_epochs": json.dumps([]),
+                    "cv_within_cv_range": float("nan"),
+                    "cv_within_cv_std": float("nan"),
+                    "cv_mean_val_by_epoch": json.dumps([]),
+                    "cv_std_val_by_epoch": json.dumps([]),
+                }
 
 
-                # Few-shot adaptation
-                results.append(
-                    {
-                        "shots": n_shots,
-                        "epochs": chosen_epochs,
-                        "final_accuracy": result["accuracy_q"][
-                            -1
-                        ],  # Last epoch accuracy
-                        "final_loss": result["loss_q"][-1],  # Last epoch loss
-                        "n_samples": result["n_support"]
-                        + result["n_query"],  # Total samples
-                        "n_support": result["n_support"],
-                        "n_query": result["n_query"],
-                        "accuracy_evolution": result["accuracy_q"],
-                        "loss_evolution": result["loss_q"],
-                        "support_accuracy_evolution": result["accuracy_s"],
-                        "support_loss_evolution": result["loss_s"],
-                        "epoch_time_evolution": result["epoch_runtimes"],
-                        "cv_mean_val_by_epoch": cv_out.get("cv_mean_val_by_epoch", []),
-                        "cv_std_val_by_epoch": cv_out.get("cv_std_val_by_epoch", []),
-                    }
-                )
+            acc_q = run.get("accuracy_q", [])
+            acc_s = run.get("accuracy_s", [])
+            loss_q = run.get("loss_q", [])
+            loss_s = run.get("loss_s", [])
+            epoch_runtimes = run.get("epoch_runtimes", [])
 
-        # Convert to DataFrame
-        df = pd.DataFrame(results)
+            row = {
+                    "subject_id": subject_id,
+                    "shots": n_shots,
+                    "repetition": rep,
+                    "final_accuracy": (acc_q[-1] if acc_q else float("nan")),
+                    "final_loss": (loss_q[-1] if loss_q else float("nan")),
+                    "final_accuracy_train": (acc_s[-1] if acc_s else float("nan")),
+                    "n_samples": run.get("n_support", 0) + run.get("n_query", 0),
+                    "n_support": run.get("n_support", 0),
+                    "n_query": run.get("n_query", 0),
+                    **cv_cols,
+                }
+            # pad back to n_epochs so the saved schema stays identical
+            acc_q_pad  = _pad(acc_q,  n_epochs)
+            acc_s_pad  = _pad(acc_s,  n_epochs)
+            loss_q_pad = _pad(loss_q, n_epochs)
+            loss_s_pad = _pad(loss_s, n_epochs)
+            time_pad   = _pad_time(epoch_runtimes, n_epochs)
 
-        # Set shots as index for easier access
-        df = df.set_index("shots")
+            for ei in range(n_epochs):
+                row[f"acc_train_e{ei+1}"] = acc_s_pad[ei]
+                row[f"acc_test_e{ei+1}"]  = acc_q_pad[ei]
+                row[f"loss_supp_e{ei+1}"] = loss_s_pad[ei]
+                row[f"loss_q_e{ei+1}"]    = loss_q_pad[ei]
+                row[f"epoch_time_e{ei+1}"] = time_pad[ei]
 
-        return df
+            rows.append(row)
+
+        return rows
+
 
     def test_all_subjects(
         self,
-        shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100],
+        shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25],
         n_epochs: int = 10,
         n_repeats: int = 10,
+        use_cv_epoch_selection: bool = True,
+        cv_min_shots: int = 6,
+        cv_val_frac: float = 0.2,
+        cv_min_per_class: int = 1,
+        cv_n_folds: Optional[int] = None, # will be automatically determined if None
     ) -> Dict[int, pd.DataFrame]:
-        """
-        Test adaptation for all test subjects.
-
-        Args:
-            shots_list: List of shot counts to test
-            n_epochs: Number of adaptation epochs (single value)
-            save_dir: Directory to save results
-
-        Returns:
-            Dictionary mapping subject_id -> DataFrame of results
-        """
-                
-        
         logger.info(f"Testing {len(self.S_test)} subjects with {n_epochs} epochs")
         all_results = {}
         aggregated_results = []
-
-        # For repetition-level CSV: collect rows with columns for epoch-wise metrics
         repetition_rows = []
+        all_cv_rows = []
 
         for subject_id in self.S_test:
             start_time = time.time()
-
-            # For each subject, iterate shots and repetitions
             subject_results_for_return = {}
-            for n_shots in shots_list:
-                per_shot_records = []
 
-                if n_shots == 0:
-                    # Zero-shot: repeat evaluation n_repeats times (identical results)
-                    for rep in range(n_repeats):
-                        result = self._zero_shot_evaluate(subject_id, rep=rep)
-                        # Build row for CSV with epoch columns filled with same value
-                        acc_test = [result["accuracy"]] * n_epochs
-                        loss_q = [result["loss"]] * n_epochs
-                        acc_train = [float("nan")] * n_epochs
-                        loss_supp = [float("nan")] * n_epochs
+            # run all repetitions through the SAME core path as test_subject_adaptation
+            per_shot_records_accumulator = {shots: [] for shots in shots_list}
 
-                        row = {
-                            "subject_id": subject_id,
-                            "shots": n_shots,
-                            "repetition": rep,
-                            # keep existing final_accuracy as test final for compatibility
-                            "final_accuracy": result["accuracy"],
-                            "final_loss": result["loss"],
-                            # also expose train final (NaN for zero-shot)
-                            "final_accuracy_train": float("nan"),
-                            "n_samples": result["n_samples"],
-                            "n_support": 0,
-                            "n_query": result["n_samples"],
-                        }
-                        # add epoch columns: train (support), test (query), support/test losses
-                        for ei in range(n_epochs):
-                            row[f"acc_train_e{ei+1}"] = acc_train[ei]
-                            row[f"acc_test_e{ei+1}"] = acc_test[ei]
-                            row[f"loss_supp_e{ei+1}"] = loss_supp[ei]
-                            row[f"loss_q_e{ei+1}"] = loss_q[ei]
-                            row[f"epoch_time_e{ei+1}"] = 0.0  # No adaptation time
-                        repetition_rows.append(row)
-                        per_shot_records.append(row)
-                else:
-                    # Few-shot: perform n_repeats different samplings/adaptations
-                    available_trials = len(
-                        self.test_epi.subj_local_to_global[subject_id]
-                    )
-                    assert (
-                        n_shots <= available_trials
-                    ), f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
+            for rep in range(n_repeats):
+                rows = self._evaluate_subject_once(
+                    subject_id=subject_id,
+                    shots_list=shots_list,
+                    n_epochs=n_epochs,
+                    rep=rep,
+                    use_cv_epoch_selection=use_cv_epoch_selection,
+                    cv_min_shots=cv_min_shots,
+                    cv_val_frac=cv_val_frac,
+                    cv_min_per_class=cv_min_per_class,
+                    cv_n_folds=cv_n_folds,
+                )
+                repetition_rows.extend(rows)
+                # stash per-shot rows for this subject
+                for r in rows:
+                    per_shot_records_accumulator[r["shots"]].append(r)
 
-                    for rep in range(n_repeats):
-                        run = self._adapt_and_evaluate(
-                            subject_id, n_shots, n_epochs, rep=rep
-                        )
-                        acc_q = run["accuracy_q"]
-                        acc_s = run.get("accuracy_s", [])
-                        loss_q = run.get("loss_q", [])
-                        loss_s = run.get("loss_s", [])
-                        epoch_runtimes = run.get("epoch_runtimes", [])
-
-                        row = {
-                            "subject_id": subject_id,
-                            "shots": n_shots,
-                            "repetition": rep,
-                            # keep existing final_accuracy as test final for compatibility
-                            "final_accuracy": acc_q[-1] if len(acc_q) else float("nan"),
-                            "final_loss": loss_q[-1] if len(loss_q) else float("nan"),
-                            # final train/support accuracy
-                            "final_accuracy_train": (
-                                acc_s[-1] if len(acc_s) else float("nan")
-                            ),
-                            "n_samples": run.get("n_support", 0)
-                            + run.get("n_query", 0),
-                            "n_support": run.get("n_support", 0),
-                            "n_query": run.get("n_query", 0),
-                        }
-                        # add epoch columns (pad/truncate to n_epochs)
-                        for ei in range(n_epochs):
-                            row[f"acc_train_e{ei+1}"] = (
-                                acc_s[ei] if ei < len(acc_s) else float("nan")
-                            )
-                            row[f"acc_test_e{ei+1}"] = (
-                                acc_q[ei] if ei < len(acc_q) else float("nan")
-                            )
-                            row[f"loss_supp_e{ei+1}"] = (
-                                loss_s[ei] if ei < len(loss_s) else float("nan")
-                            )
-                            row[f"loss_q_e{ei+1}"] = (
-                                loss_q[ei] if ei < len(loss_q) else float("nan")
-                            )
-                            row[f"epoch_time_e{ei+1}"] = (
-                                epoch_runtimes[ei] if ei < len(epoch_runtimes) else float("nan")
-                            )
-                        repetition_rows.append(row)
-                        per_shot_records.append(row)
-
-                # Aggregate final accuracy per-shot across repetitions for summary
-                # Build a small DataFrame for this subject/shot where index is repetition
-                shot_df = pd.DataFrame(per_shot_records).set_index("repetition")
-                subject_results_for_return[n_shots] = shot_df
+            # build return dict (per-shot DataFrame indexed by repetition)
+            for shots in shots_list:
+                shot_rows = per_shot_records_accumulator.get(shots, [])
+                if not shot_rows:
+                    continue
+                shot_df = pd.DataFrame(shot_rows).set_index("repetition")
+                subject_results_for_return[shots] = shot_df
 
             all_results[subject_id] = subject_results_for_return
+
+            # Save cross-validation results (JSON of the CV rows)
+            if self.save_dir and all_cv_rows:
+                cv_serializable = {
+                    "subject_id": subject_id,
+                    "cv_results": [r.to_dict("index") for r in all_cv_rows],
+                }
+                with open(
+                    self.save_dir / f"subject_{subject_id}_cv_results.json", "w"
+                ) as f:
+                    json.dump(cv_serializable, f, indent=2)
 
             # Save individual subject results (JSON of the per-shot dict of repetition DataFrames)
             if self.save_dir:
@@ -893,9 +843,6 @@ class TestEngine:
 
         logger.info(f"Testing completed for all {len(self.S_test)} subjects")
         return all_results
-    
-    
-    
 
     def plot_aggregated_results(
         self,
@@ -992,3 +939,4 @@ class TestEngine:
             plt.close(fig)
 
         return fig, ax
+
