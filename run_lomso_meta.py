@@ -235,6 +235,6 @@ def run_lomso(config_path: str):
 
 
 if __name__ == "__main__":
-    run_lomso("hyperparameters/hyperparameters.yaml") # set max_folds to limit number of folds for development purposes
+    run_lomso("hyperparameters/meta_hyperparameters.yaml") # set max_folds to limit number of folds for development purposes
     
     

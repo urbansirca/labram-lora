@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=1    # number of GPUs per node
 # Load conda and activate environment
 source ~/.bashrc
-conda activate eeg
+conda activate eeg2
 
 # Set up W&B authentication
 export WANDB_API_KEY=3ec79694d26f52516f6a835ee88ed4d04316ba06
@@ -15,4 +15,4 @@ wandb login $WANDB_API_KEY
 
 # Go to project folder and run training
 cd ~/usirca/workspace/labram-lora
-python run_lomso.py
+python meta_train.py

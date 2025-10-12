@@ -10,7 +10,7 @@ import torch.nn as nn
 from meta_engine import MetaEngine
 from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
-from preprocess_KU_data import get_ku_dataset_channels
+from preprocessing.preprocess_KU_data import get_ku_dataset_channels
 from test_engine import TestEngine
 
 logging.basicConfig(
@@ -319,8 +319,8 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         run_size=100,
         save_dir=Path(config.get("test").get("save_dir_root", "results/test")) / model_str / experiment_name,
         head_only=hyperparameters.get("head_only_test"),
-        test_lr=hyperparameters.get("test_lr"),
-        test_wd=hyperparameters.get("test_wd"),
+        test_lr=float(hyperparameters.get("test_lr")),
+        test_wd=float(hyperparameters.get("test_wd")),
     )
 
     return engine, tester

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import h5py
 import torch
 from torch.utils.data import Dataset, Sampler
-from preprocess_KU_data import get_ku_dataset_channels
+from preprocessing.preprocess_KU_data import get_ku_dataset_channels
 import numpy as np
 
 # --- add near top of file ---
@@ -87,7 +87,7 @@ class KUTrialDataset(Dataset):
         dataset_path: str,
         subject_ids: List[int],
         as_float32: bool = True,
-        verbose: bool = False,  # Control debug output
+        verbose: bool = True,  # Control debug output
         select_mirepnet_45: bool = False,  # Select MIREPNet 45 channels
     ):
         self.dataset_path = str(dataset_path)

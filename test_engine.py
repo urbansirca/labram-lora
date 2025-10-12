@@ -235,6 +235,7 @@ class TestEngine:
         fast = self._clone_as_leaf(base_params)
 
         # Create optimizer for adaptation
+        print(self.test_lr, self.test_wd)
         adapter_optimizer = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
         
 
@@ -310,6 +311,165 @@ class TestEngine:
             "n_query": len(yq),
             "epoch_runtimes": runtime_list,
         }
+        
+    def adapt_with_cv_epoch_selection(
+        self,
+        subject_id: int,
+        n_shots: int,
+        max_epochs: int = 10,
+        val_frac: float = 0.2,
+        min_val_per_class: int = 1,
+        n_folds: Optional[int] = None,
+        rep: Optional[int] = None,
+    ):
+        """
+        For shots >= 6:
+        1) Perform stratified K-fold CV *on the support shots* to pick #epochs.
+            - Hold out ~20% per class for validation each fold (at least 1 per class and 2 total).
+            - Train on remaining support shots; after each epoch, evaluate on the fold's val split.
+        2) Choose the epoch with the highest *mean* val accuracy across folds (earliest on ties).
+        3) Retrain on the *full support set* for that many epochs.
+        4) Evaluate on the query set (all non-support trials).
+
+        Returns:
+        {
+            "best_epochs": int,
+            "cv_mean_val_by_epoch": List[float],   # length max_epochs
+            "cv_std_val_by_epoch": List[float],    # length max_epochs
+            "final": { "accuracy_s": [...], "accuracy_q": [...], "loss_s": [...], "loss_q": [...],
+                    "n_support": int, "n_query": int, "epoch_runtimes": [...] }
+        }
+        """
+        assert n_shots >= 6, "Use CV epoch selection only when shots >= 6."
+
+        # ----------------------------
+        # 0) Build support & query
+        # ----------------------------
+        sup_local_idx, que_local_idx = self._get_support_and_query_trials(subject_id, n_shots)
+        Xs, ys = fetch_by_indices(
+            self.test_ds, self.test_epi, subject_id, sup_local_idx,
+            self.engine.device, self.engine.non_blocking
+        )
+        Xq, yq = fetch_by_indices(
+            self.test_ds, self.test_epi, subject_id, que_local_idx,
+            self.engine.device, self.engine.non_blocking
+        )
+
+        # Stratify by class on the SUPPORT set
+        y_np = ys.detach().cpu().numpy()
+        classes = sorted(set(y_np.tolist()))
+        assert len(classes) >= 2, "Expected at least 2 classes to enforce class-wise holdout."
+
+        # Decide val counts per class (>= min_val_per_class)
+        import math
+        per_class_indices = {c: [i for i, yy in enumerate(y_np) if yy == c] for c in classes}
+        val_counts = {
+            c: max(min_val_per_class, int(round(val_frac * len(per_class_indices[c]))))
+            for c in classes
+        }
+
+        # Ensure *total* validation size at least 2 and at least 1 per class
+        total_val_min = sum(max(1, val_counts[c]) for c in classes)
+        if total_val_min < 2:
+            # if extremely small support, bump one class
+            big_class = max(classes, key=lambda c: len(per_class_indices[c]))
+            val_counts[big_class] = max(1, val_counts[big_class] + 1)
+
+        # Number of folds: rotate the held-out slices for each class
+        # If user didn't pass n_folds, default to min over classes of floor(n_class / val_count)
+        if n_folds is None:
+            n_folds = max(2, min(
+                max(1, len(per_class_indices[c]) // max(1, val_counts[c])) for c in classes
+            ))
+
+        # Pre-shuffle per-class indices for reproducibility (use self.rng)
+        for c in classes:
+            self.rng.shuffle(per_class_indices[c])
+
+        # ----------------------------
+        # 1) CV loop: per-fold val curves
+        # ----------------------------
+        # Get trainable "base" params once (we will reset/clone per fold)
+        base_named = [(n, p) for n, p in self.engine.model.named_parameters() if n in self._allow_trainable]
+        base_names = [n for n, _ in base_named]
+        base_params = [p for _, p in base_named]
+
+        def _clone_fast():
+            return [torch.empty_like(p).copy_(p.detach()).requires_grad_(True) for p in base_params]
+
+        val_acc_per_epoch_across_folds = []
+
+        for fold in range(n_folds):
+            # Build fold's val/train splits (indices into Xs, ys)
+            val_idx, train_idx = [], []
+            for c in classes:
+                cls_idx = per_class_indices[c]
+                # rotating window for this fold
+                start = (fold * val_counts[c]) % len(cls_idx)
+                end = start + val_counts[c]
+                sel = cls_idx[start:end] if end <= len(cls_idx) else (cls_idx[start:] + cls_idx[: end % len(cls_idx)])
+                sel = sel[:val_counts[c]]  # guard
+                val_set = set(sel)
+                val_idx.extend(sel)
+                train_idx.extend([i for i in cls_idx if i not in val_set])
+
+            # Tensors
+            Xtr, ytr = Xs[train_idx], ys[train_idx]
+            Xva, yva = Xs[val_idx], ys[val_idx]
+
+            # Fresh fast params + optimizer for this fold
+            fast = _clone_fast()
+            adapter_optimizer = self.optimizer_factory(fast, lr=self.test_lr, wd=self.test_wd)
+
+            fold_val_curve = []
+            for epoch in range(max_epochs):
+                adapter_optimizer.zero_grad()
+                fast_dict = dict(zip(base_names, fast))
+                # Train step on training partition of support
+                logits_tr = self._forward_with(fast_dict, Xtr)
+                loss_tr = nn.functional.cross_entropy(logits_tr, ytr)
+                loss_tr.backward()
+                adapter_optimizer.step()
+
+                # Val eval
+                fast_dict = dict(zip(base_names, fast))
+                with torch.no_grad():
+                    logits_va = self._forward_with(fast_dict, Xva)
+                    acc_va = (logits_va.argmax(1) == yva).float().mean().item()
+                fold_val_curve.append(acc_va)
+
+            val_acc_per_epoch_across_folds.append(fold_val_curve)
+
+        # Aggregate across folds
+        import numpy as np
+        val_acc_matrix = np.array(val_acc_per_epoch_across_folds)  # shape: (n_folds, max_epochs)
+        mean_val_by_epoch = val_acc_matrix.mean(axis=0).tolist()
+        std_val_by_epoch = val_acc_matrix.std(axis=0, ddof=1 if n_folds > 1 else 0).tolist()
+        
+        print("val accuracy matrix (folds x epochs):")
+        print(val_acc_matrix)
+        print(f"CV mean val acc by epoch: {mean_val_by_epoch}")
+        print(f"CV std val acc by epoch: {std_val_by_epoch}")
+
+        # Pick best epoch (1-based), earliest on ties
+        best_epoch_idx = int(np.argmax(mean_val_by_epoch)) + 1
+        print(f"Chosen best epoch (CV): {best_epoch_idx} with mean val acc {mean_val_by_epoch[best_epoch_idx-1]:.4f}")
+
+        # ----------------------------
+        # 2) Retrain on full support for best #epochs and evaluate on query
+        # ----------------------------
+        # Reuse your existing adaptation loop but with the chosen epoch count.
+        final_run = self._adapt_and_evaluate(subject_id, n_shots, best_epoch_idx, rep=rep)
+        
+        print(f"Final run after CV-based epoch selection: {final_run}")
+
+        return {
+            "best_epochs": best_epoch_idx,
+            "cv_mean_val_by_epoch": mean_val_by_epoch,
+            "cv_std_val_by_epoch": std_val_by_epoch,
+            "final": final_run,
+        }
+
 
     def test_subject_adaptation(
         self,
@@ -362,12 +522,29 @@ class TestEngine:
                     n_shots <= available_trials
                 ), f"Subject {subject_id}: Requested {n_shots} shots but only {available_trials} trials available."
 
+                ##################### Cross-validation-based epoch selection for n_shots >= 6 #####################
+                if n_shots >= 6:
+                    cv_out = self.adapt_with_cv_epoch_selection(
+                        subject_id,
+                        n_shots,
+                        max_epochs=n_epochs,      # typically 10
+                        val_frac=0.2,             # 20%
+                        min_val_per_class=1,      # ensure at least one per class
+                        n_folds=None,             # or set an explicit integer
+                    )
+                    result = cv_out["final"]      # same shape as _adapt_and_evaluate(...) return
+                    chosen_epochs = cv_out["best_epochs"]
+                else:
+                    result = self._adapt_and_evaluate(subject_id, n_shots, n_epochs)
+                    chosen_epochs = n_epochs
+                    cv_out = {} # empty dict if not using CV-based selection
+
+
                 # Few-shot adaptation
-                result = self._adapt_and_evaluate(subject_id, n_shots, n_epochs)
                 results.append(
                     {
                         "shots": n_shots,
-                        "epochs": n_epochs,
+                        "epochs": chosen_epochs,
                         "final_accuracy": result["accuracy_q"][
                             -1
                         ],  # Last epoch accuracy
@@ -381,6 +558,8 @@ class TestEngine:
                         "support_accuracy_evolution": result["accuracy_s"],
                         "support_loss_evolution": result["loss_s"],
                         "epoch_time_evolution": result["epoch_runtimes"],
+                        "cv_mean_val_by_epoch": cv_out.get("cv_mean_val_by_epoch", []),
+                        "cv_std_val_by_epoch": cv_out.get("cv_std_val_by_epoch", []),
                     }
                 )
 
@@ -714,6 +893,9 @@ class TestEngine:
 
         logger.info(f"Testing completed for all {len(self.S_test)} subjects")
         return all_results
+    
+    
+    
 
     def plot_aggregated_results(
         self,

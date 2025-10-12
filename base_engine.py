@@ -95,7 +95,7 @@ class BaseEngine:
     def log_metrics(self):
         present = {k: v for k, v in self.metrics.__dict__.items() if v is not None}
         line = " | ".join(
-            f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
+            f"{k}: {v:.6f}" if isinstance(v, float) else f"{k}: {v}"
             for k, v in present.items()
         )
         line += f" | Runtime: {time.time() - self.start_time:.2f}s"

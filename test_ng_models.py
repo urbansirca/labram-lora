@@ -74,16 +74,14 @@ subjs = [
     30,
 ]
 
-
 WEIGHTS_DIR = "weights/pretrained-models/ng_deepconvnet_pretrained"
 
 
 
-def run_lomso(config_path: str):
+def run(config_path: str):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
-
     shots_list = base_cfg.get("test", {}).get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
     n_epochs = base_cfg.get("test", {}).get("n_epochs", 10)
     n_repeats = base_cfg.get("test", {}).get("n_repeats", 10)
@@ -91,7 +89,7 @@ def run_lomso(config_path: str):
 
     results = {}
 
-    lomso_root = Path("ng_testing") / "run1"
+    lomso_root = Path("ng_testing") / "raw_dataset"
     lomso_root.mkdir(parents=True, exist_ok=True)
     
     weights_path = Path(WEIGHTS_DIR)
@@ -100,9 +98,7 @@ def run_lomso(config_path: str):
         key=lambda p: int(p.stem.split("model_f")[-1]))
     
     model_names = [p.stem for p in model_files]
-    
-    
-    
+
     for model_path in model_files:
         model_path = str(model_path)
         idx = int(model_path.split("model_f")[-1].split(".")[0])
@@ -114,7 +110,7 @@ def run_lomso(config_path: str):
 
         cfg = copy.deepcopy(base_cfg)
         
-        cfg.setdefault("data", {})["dataset"] = "data/preprocessed/KU_mi_labram_preprocessed_trial_norm_NG_format.h5"
+        cfg.setdefault("data", {})["path"] = "data/preprocessed/ng/KU_mi_smt.h5"
         # just for now
         # cfg.setdefault(model_name, {})["head_only_test"] = head_only
 
@@ -128,7 +124,7 @@ def run_lomso(config_path: str):
         # set experiment name so checkpoints are separated per-fold
         experiment_name = f"test_subject_{subject}_{model_name}"
         
-        dest = lomso_root / model_name / experiment_name
+        dest = lomso_root / experiment_name
         dest.mkdir(parents=True, exist_ok=True)
         
         cfg.setdefault("experiment", {})["checkpoint_dir"] = str(dest)
@@ -184,4 +180,4 @@ def run_lomso(config_path: str):
 
 
 if __name__ == "__main__":
-    run_lomso("hyperparameters/hyperparameters.yaml", ) # set max_folds to limit number of folds for development purposes
+    run("hyperparameters/hyperparameters.yaml", ) # set max_folds to limit number of folds for development purposes

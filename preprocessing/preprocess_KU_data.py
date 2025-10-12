@@ -404,6 +404,42 @@ def get_ku_dataset_channels():
         "PO4",
     ]
 
+def get_nikki_dataset_channels():
+    NIKKI_ELECTRODES = ["F3", "Fz", "F4", "FC5", "FC1", "FC2", "FC6", "T7", "C3", "C4", "Cz", "T8", "CP5", "CP1", "CP2", "CP6"]
+    return NIKKI_ELECTRODES
+
+
+def get_dreyer_dataset_channels():
+    DREYER_32 = [
+    "Fz",
+    "FCz",
+    "Cz",
+    "CPz",
+    "Pz",
+    "C1",
+    "C3",
+    "C5",
+    "C2",
+    "C4",
+    "C6",
+    "F4",
+    "FC2",
+    "FC4",
+    "FC6",
+    "CP2",
+    "CP4",
+    "CP6",
+    "P4",
+    "F3",
+    "FC1",
+    "FC3",
+    "FC5",
+    "CP1",
+    "CP3",
+    "CP5",
+    "P3",
+    ]
+    return DREYER_32
 
 @dataclass
 class DataPreprocessingConfig:

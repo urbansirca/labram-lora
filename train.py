@@ -12,7 +12,7 @@ from engine import Engine
 from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from test_engine import TestEngine
-from preprocess_KU_data import get_ku_dataset_channels
+from preprocessing.preprocess_KU_data import get_ku_dataset_channels
 
 
 # ---------------- logging ----------------
@@ -161,8 +161,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     if experiment_name is None: # for combined training we want same experiment name
         name_list = [
             model_str,
-            exp_cfg["optimizer"],
-            exp_cfg["scheduler"],
             datetime.now().strftime("%H%M%S"),
         ]
         experiment_name = "_".join(name_list)
@@ -323,6 +321,17 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     n_patches_labram = data_cfg.get("n_patches_labram") if model_str == "labram" else None
     patch_len = data_cfg.get("patch_length") if model_str == "labram" else None
     
+    
+    model = model.to(DEVICE)
+    samples = int(data_cfg.get("samples"))
+    with torch.no_grad():
+        if model_str == "labram":
+            _ = model(
+                x=torch.zeros(1, input_channels, n_patches_labram, patch_len, device=DEVICE),
+                electrodes=electrodes,
+            )
+        else:
+            _ = model(x=torch.zeros(1, input_channels, samples, device=DEVICE))
 
 
     checkpoint_dir = Path(str(exp_cfg.get("checkpoint_dir") or (Path(__file__).parent / "weights" / "checkpoints" / experiment_name)))
