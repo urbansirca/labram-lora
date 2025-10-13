@@ -1,8 +1,8 @@
 import pandas as pd
 import pathlib
 
-root_dir = pathlib.Path("test_only_lomso")
-models = ["deepconvnet", "labram_head_only", "labram_full_model"]
+root_dir = pathlib.Path("lomso/alternating_run1")
+models = ["labram"]
 
 
 # loop over models and folds, collect results
@@ -13,6 +13,7 @@ for model in models:
         if not experiment_dir.is_dir():
             continue
         results_file = experiment_dir / "repetition_results.csv"
+        print(results_file)
         if not results_file.exists():
             print(f"Warning: {results_file} does not exist, skipping.")
             continue

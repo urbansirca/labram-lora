@@ -65,7 +65,7 @@ def preprocess(
     bandpass_high: float = 100.0,
     apply_notch: bool = True,
     notch_frequencies: list[float] | None = None,
-    apply_car: bool = True,
+    apply_car: bool = False,
     apply_ica: bool = True
 ) -> mne.io.BaseRaw:
     """
@@ -78,12 +78,25 @@ def preprocess(
         notch_frequencies = [50.0, 60.0, 100.0]
 
     raw.load_data()
+    print("  Raw data: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+        np.min(raw._data), np.max(raw._data), np.mean(raw._data), np.std(raw._data)
+    ))
 
     if apply_bandpass:
         raw.filter(l_freq=bandpass_low, h_freq=bandpass_high, verbose=False)
+        
+        print(f"  ✓ Applied band-pass filter {bandpass_low}-{bandpass_high} Hz")
+        print("    After filtering: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+            np.min(raw._data), np.max(raw._data), np.mean(raw._data), np.std(raw._data)
+        ))
 
     if apply_notch and len(notch_frequencies) > 0:
         raw.notch_filter(freqs=notch_frequencies, verbose=False)
+        
+        print(f"  ✓ Applied notch filter at {notch_frequencies} Hz")
+        print("    After notch: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+            np.min(raw._data), np.max(raw._data), np.mean(raw._data), np.std(raw._data)
+        ))
 
     if apply_ica:
         try:
@@ -117,6 +130,10 @@ def preprocess(
         except Exception as e:
             print(f"  ⚠️  ICA failed: {e}")
             print("  Continuing without ICA artifact removal")
+            
+    print("    After ICA (if applied): min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+        np.min(raw._data), np.max(raw._data), np.mean(raw._data), np.std(raw._data)
+    ))
 
 
     if apply_car:
@@ -124,10 +141,31 @@ def preprocess(
         X = raw.get_data(picks=eeg_picks)
         X -= X.mean(axis=0, keepdims=True)  # CAR across channels
         raw._data[eeg_picks] = X
+        
+        print("  ✓ Applied Common Average Reference (CAR)")
+        print("    After CAR: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+            np.min(raw._data), np.max(raw._data), np.mean(raw._data), np.std(raw._data)
+        ))
 
-    raw.pick_types(eeg=True, eog=False, emg=False)
+    picks = mne.pick_types(raw.info, eeg=True, eog=False, emg=False)
+    raw.pick(picks)
 
     return raw
+
+
+def zscore_per_trial_channel(X, eps=1e-7):
+    """
+    X: (T, C, P, S)  -> z-score per (trial t, channel c) across all time (P*S).
+    Returns Xz, mean, std with shapes:
+    Xz: (T,C,P,S)
+    mean,std: (T,C,1,1) so they can be broadcast back if needed.
+    """
+    mean = X.mean(axis=(-1, -2), keepdims=True)  # (T,C,1,1)
+    std  = X.std(axis=(-1, -2), keepdims=True)
+    std = np.maximum(std, eps)
+    Xz = (X - mean) / std
+    return Xz.astype(np.float32), mean.astype(np.float32), std.astype(np.float32)
+
 
 
 # ---- robust event extraction: stim channel if available, else parse annotations ----
@@ -298,7 +336,7 @@ def resample_last_axis_to_len(X: np.ndarray, target_len: int) -> np.ndarray:
     return X_rs.astype(np.float32, copy=False)
 
 
-def convert_subject(subj_dir: Path):
+def convert_subject(subj_dir: Path, z_score_norm: bool = True) -> tuple[np.ndarray, np.ndarray]:
     raws = []
     all_events = []
     cum_offset = 0
@@ -306,6 +344,10 @@ def convert_subject(subj_dir: Path):
     for run_file in load_runs(subj_dir):
         raw_full = read_raw_gdf(run_file, preload=False, verbose="ERROR")
 
+        data = raw_full.get_data()
+        # print("RAW SIGNAL: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+        #     np.min(data), np.max(data), np.mean(data), np.std(data)
+        # ))
         # 1) grab events BEFORE dropping stim/annotations
         ev = _get_events_int(raw_full)
         if ev.size:
@@ -333,15 +375,22 @@ def convert_subject(subj_dir: Path):
     X = resample_last_axis_to_len(X, target_len=1000)  # -> (T, 27, 1000)
 
     X = to_patches_nonoverlap(X, patch_size=200)  # -> (T, 27, 5, 200)
+
+    if z_score_norm:
+        Xz, m, s = zscore_per_trial_channel(X)             # z-score per trial & channel
+        print("  After z-score: min=%.3f max=%.3f mean=%.3f std=%.3f" % (
+            np.min(Xz), np.max(Xz), np.mean(Xz), np.std(Xz)
+        ))
+        return Xz, Y
     return X, Y
 
 
-def write_h5(out_path: Path, subjects: list[Path], scheme="sequential"):
+def write_h5(out_path: Path, subjects: list[Path], scheme="sequential", z_score_norm=True):
     with h5py.File(out_path, "w") as h5:
         sid = 1
         for subj in tqdm(subjects):
             try:
-                X, Y = convert_subject(subj)
+                X, Y = convert_subject(subj, z_score_norm=z_score_norm)
             except Exception as e:
                 print(f"[skip] {subj.name}: {e}")
                 continue
@@ -353,7 +402,7 @@ def write_h5(out_path: Path, subjects: list[Path], scheme="sequential"):
             sid += 1
 
 if __name__ == "__main__":
-    root = Path("data/raw/Dreyer2019/Signals") 
+    root = Path("/home/usirca/workspace/labram-lora/data/raw/Dreyer2019/Signals") 
 
     # Store paths of all subjects (example: BCI_Database/Signals/DATA B/B79)
     subjects = []
@@ -363,4 +412,6 @@ if __name__ == "__main__":
                 subjects.append(s)
                 print(s)
 
-    write_h5(Path("data/preprocessed/dreyer/ABC_labram_preprocessed_no_components.h5"), subjects)
+    write_h5(Path("/home/usirca/workspace/labram-lora/data/preprocessed/dreyer/ABC_labram_preprocessed_trial_norm.h5"), 
+             subjects,
+             z_score_norm=True)

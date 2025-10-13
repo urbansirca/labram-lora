@@ -130,17 +130,23 @@ class KUTrialDataset(Dataset):
             first_grp = f[f"s{first_sid}"]
             n_trials_per_subject = first_grp["X"].shape[0]
 
-            if verbose:
-                X_shape = first_grp["X"].shape
-                Y_shape = first_grp["Y"].shape
-                print(f"Detected shape per subject: X={X_shape}, Y={Y_shape}")
-                print(
-                    f"Assuming all {len(self.subject_ids)} subjects have {n_trials_per_subject} trials each"
-                )
-
+            X_shape = first_grp["X"].shape
+            Y_shape = first_grp["Y"].shape
+            print(f"Detected shape per subject: X={X_shape}, Y={Y_shape}")
+            print(
+                f"Assuming all {len(self.subject_ids)} subjects have {n_trials_per_subject} trials each"
+            )
+            
+            # print shapes for all subjects and check consistency
+            inconsistent = []
+            for sid in self.subject_ids:
+                grp = f[f"s{sid}"]
+                if grp["X"].shape != X_shape or grp["Y"].shape != Y_shape:
+                    print(f"Warning: Subject {sid} has different data shape: X={grp['X'].shape}, Y={grp['Y'].shape}")
+                    inconsistent.append(sid)
             # Fast index building - no need to access each subject's HDF5 group
             for sid in self.subject_ids:
-                self._index.extend((sid, i) for i in range(n_trials_per_subject))
+                self._index.extend((sid, i) for i in range(n_trials_per_subject) if sid not in inconsistent)
 
             total_trials = len(self._index)
             if verbose:

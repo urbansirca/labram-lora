@@ -129,7 +129,7 @@ def run_lomso(config_path: str):
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
-    subdir = "CV-test-30"
+    subdir = "nikki"
     lomso_root = lomso_root / subdir
     lomso_root.mkdir(parents=True, exist_ok=True)
     for model_name in models:

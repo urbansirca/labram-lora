@@ -152,6 +152,7 @@ class Engine(BaseEngine):
             backward_start_time = time.time()
             loss = self.loss_fn(logits, Y)
             loss.backward()
+            
             self.optimizer.step()
 
             # Don't call .item() here - just accumulate the loss tensor
@@ -264,10 +265,15 @@ class Engine(BaseEngine):
         total_loss = torch.tensor(0.0, device=self.device)
         total_correct = torch.tensor(0, device=self.device)
         total_count = torch.tensor(0, device=self.device)
+        
+        preds_list = torch.tensor([], device=self.device)
+        y_list = torch.tensor([], device=self.device)
 
         for i, (X, Y, sid) in enumerate(self.validation_set):
             X = X.to(self.device, non_blocking=self.non_blocking)
             Y = Y.long().to(self.device, non_blocking=self.non_blocking)
+            y_list = torch.cat((y_list, Y), dim=0)
+
 
             forward_start_time = time.time()
 
@@ -275,18 +281,31 @@ class Engine(BaseEngine):
 
             backward_start_time = time.time()
             loss = self.loss_fn(logits, Y)
+            
+            # print unique predictions in the batch
+            # unique, counts = logits.argmax(dim=1).unique(return_counts=True)
+            
+            # print(logits.shape, loss.item())
+            # print("Unique predictions:", unique)
+            # print("Counts:", counts)
 
             start_time_metrics = time.time()
             bsz = Y.size(0)
             total_loss += loss * bsz
             preds = logits.argmax(dim=1)
+            preds_list = torch.cat((preds_list, preds), dim=0)
             total_correct += (preds == Y).sum()
             total_count += bsz
 
             logger.debug(
                 f"Forward pass time for batch {i}: {backward_start_time - forward_start_time:.2f}s, Backward pass time: {start_time_metrics - backward_start_time:.2f}s, Metrics time: {time.time() - start_time_metrics:.2f}s"
             )
-
+            
+        # print classification report
+        # from sklearn.metrics import classification_report
+        # print("Classification Report:")
+        # print(classification_report(y_list.cpu().numpy(), preds_list.cpu().numpy(), digits=4))
+        # print("Total correct:", total_correct.item(), "out of", total_count.item())
         self.metrics.val_loss = (total_loss / max(1, total_count)).item()
         self.metrics.val_accuracy = (total_correct / max(1, total_count)).item()
 

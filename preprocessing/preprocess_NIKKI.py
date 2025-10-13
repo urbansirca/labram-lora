@@ -34,9 +34,14 @@ def csvs_to_h5(input_dir, out_path):
         m = re.search(r"Subject(\d+)", os.path.basename(p))
         if m:
             subs.setdefault(int(m.group(1)), []).append(p)
+            
+    sid_map = {old_sid: i + 1 for i, old_sid in enumerate(sorted(subs))}
+
 
     with h5py.File(out_path, "w") as h5:
+        s_int = 1
         for sid in tqdm(sorted(subs)):
+            new_sid = sid_map[sid]
             Xs, Ys, Ts = [], [], []
             # process subject files in offset order
             for p in sorted(
@@ -61,12 +66,18 @@ def csvs_to_h5(input_dir, out_path):
                     Ys.append(y)
                     Ts.append(off + i)  # trial ids: 1–40, 41–80, 81–120, 121–160
 
-            grp = h5.create_group(f"s{sid}")
+            grp = h5.create_group(f"s{new_sid}")
             grp.create_dataset(
                 "X", data=np.stack(Xs, axis=0)
             )  # (trials, channels, time)
             grp.create_dataset("Y", data=np.asarray(Ys, dtype="i4"))  # (trials,)
             grp.create_dataset("trial_id", data=np.asarray(Ts, dtype="i4"))
+            
+            s_int += 1
 
 
-csvs_to_h5("data/raw/Leeuwis2021/Raw eeg 2", "data/preprocessed/nikki/NIKKI_dataset.h5")
+csvs_to_h5("/home/usirca/workspace/labram-lora/data/raw/Leeuwis2021/Raw eeg 2", "/home/usirca/workspace/labram-lora/data/preprocessed/nikki/NIKKI_dataset.h5")
+# import h5py
+# with h5py.File("/home/usirca/workspace/labram-lora/data/preprocessed/nikkiNIKKI_dataset.h5", "r") as f:
+#     print(sorted(f.keys())[:20])
+#     print("count:", len(f.keys()))

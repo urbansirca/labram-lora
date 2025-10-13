@@ -12,7 +12,7 @@ from engine import Engine
 from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from test_engine import TestEngine
-from preprocessing.preprocess_KU_data import get_ku_dataset_channels
+from preprocessing.preprocess_KU_data import get_ku_dataset_channels, get_dreyer_dataset_channels, get_nikki_dataset_channels
 
 
 # ---------------- logging ----------------
@@ -45,8 +45,21 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     NON_BLOCKING = opt_cfg.get("non_blocking", False)
     USE_AMP = opt_cfg.get("use_amp", False)
 
-    electrodes = data_cfg.get("electrodes") or get_ku_dataset_channels()
-    logger.info(f"USING ELECTRODES: {electrodes}")
+    electrodes = data_cfg.get("electrodes", None)
+    if electrodes is None and "dreyer" in data_cfg.get("path", "").lower():
+        electrodes = get_dreyer_dataset_channels()  # Dreyer uses the same 32 channels as KU
+        logger.info(f"USING DREYER 27 CHANNELS: {electrodes}")
+        
+    elif electrodes is None and "ku" in data_cfg.get("path", "").lower():
+        electrodes = get_ku_dataset_channels()
+        logger.info(f"USING KU CHANNELS: {electrodes}")
+    
+    elif electrodes is None and "nikki" in data_cfg.get("path", "").lower():
+        electrodes = get_nikki_dataset_channels()
+        logger.info(f"USING NIKKI CHANNELS: {electrodes}")
+    else:
+        raise ValueError("Please provide electrode list in config for non-KU datasets.")
+    # logger.info(f"USING ELECTRODES: {electrodes}")
 
     # ---------------- model ------------------
     model_name = exp_cfg["model"].lower()
@@ -72,11 +85,12 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             hyperparameters = config.get("deepconvnet", {})
             model_str = "deepconvnet"
             model = DeepConvNet(
-                    in_chans=data_cfg.get("input_channels", 62),
-                    n_classes=data_cfg.get("num_classes", 2),
-                    input_time_length=data_cfg.get("samples", 800),
+                    in_chans=data_cfg.get("input_channels"),
+                    n_classes=data_cfg.get("num_classes"),
+                    input_time_length=data_cfg.get("samples"),
                     final_conv_length="auto",
                 )
+            print("MODEL",model)
             if hyperparameters["checkpoint_file"] is not None:
                 try:
                     state_dict = torch.load(hyperparameters["checkpoint_file"], map_location="cpu")
@@ -130,6 +144,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
                 ),
             )
+            print("MODEL",model)
             model_str = "eegnet"
             
         elif model_name == "mirepnet":
@@ -265,9 +280,9 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         
         # use hyperparameters from config if not provided (will be provided in test engine)
         if lr is None:
-            lr = float(hyperparameters.get("lr", 1e-3))
+            lr = float(hyperparameters.get("lr"))
         if wd is None:
-            wd = float(hyperparameters.get("weight_decay", 0.0))
+            wd = float(hyperparameters.get("weight_decay"))
 
         # --- TEMPORARY PATCH -----------------------------------------------------
         # In the few-shot / meta-testing path, we call make_optimizer(fast)
@@ -316,8 +331,8 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             raise ValueError(f"Unsupported scheduler: {SCHEDULER}")
 
     # ---------------- engine -----------------
-    input_channels = data_cfg.get("input_channels", 62)
-    trial_len = data_cfg.get("trial_length", data_cfg.get("samples", 800))
+    input_channels = data_cfg.get("input_channels")
+    trial_len = data_cfg.get("trial_length", data_cfg.get("samples"))
     n_patches_labram = data_cfg.get("n_patches_labram") if model_str == "labram" else None
     patch_len = data_cfg.get("patch_length") if model_str == "labram" else None
     

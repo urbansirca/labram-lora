@@ -227,7 +227,7 @@ class DeepConvNet(nn.Module):
                 bias=True,
             ),
         )
-        model.add_module("softmax", nn.LogSoftmax(dim=1))
+        # model.add_module("softmax", nn.LogSoftmax(dim=1))
         model.add_module("squeeze", Expression(_squeeze_final_output))
 
         # Initialization, xavier is same as in our paper...
@@ -286,7 +286,9 @@ class DeepConvNet(nn.Module):
 
         # Braindecode DeepConvNet expects input as (B, C, T, 1)
         x = x.unsqueeze(-1)
-        return self.model(x)
+        out = self.model(x)
+        # print("DeepConvNet output shape:", out.shape)  # Debug print
+        return out
 
 
 # remove empty dim at end and potentially remove empty time dim

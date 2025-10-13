@@ -130,7 +130,7 @@ def run_lomso(config_path: str):
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
-    subdir = "meta_run1"
+    subdir = "alternating_run1"
     lomso_root = lomso_root / subdir
     lomso_root.mkdir(parents=True, exist_ok=True)
     for model_name in models:
@@ -142,9 +142,9 @@ def run_lomso(config_path: str):
         
         
         for fold_idx, test_pair in enumerate(folds, start=1):
-            # if fold_idx in [1,2,3]:
-            #     logger.info(f"Skipping fold {fold_idx} for development purposes")
-            #     continue
+            if fold_idx in [1,2,3,4,5]:
+                logger.info(f"Skipping fold {fold_idx} for development purposes")
+                continue
 
             cfg = copy.deepcopy(base_cfg)
             
@@ -197,7 +197,8 @@ def run_lomso(config_path: str):
 
             # train
             if not test_only:
-                engine.meta_train()
+                # engine.meta_train()
+                engine.train_alternating()
 
             # run tests (tester.test_all_subjects uses the split's test subjects)
             all_results = tester.test_all_subjects(

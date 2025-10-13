@@ -111,6 +111,7 @@ class BaseEngine:
             with torch.autocast(device_type=self.device.type):
                 return self.model(x=X, electrodes=self.electrodes)
         else:
+            # print("ELECTRODES:", self.electrodes)
             return self.model(x=X, electrodes=self.electrodes)
         
     def checkpoint(self, name: str = "checkpoint"):

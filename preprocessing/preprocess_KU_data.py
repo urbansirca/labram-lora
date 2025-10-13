@@ -411,34 +411,18 @@ def get_nikki_dataset_channels():
 
 def get_dreyer_dataset_channels():
     DREYER_32 = [
-    "Fz",
-    "FCz",
-    "Cz",
-    "CPz",
-    "Pz",
-    "C1",
-    "C3",
-    "C5",
-    "C2",
-    "C4",
-    "C6",
-    "F4",
-    "FC2",
-    "FC4",
-    "FC6",
-    "CP2",
-    "CP4",
-    "CP6",
-    "P4",
-    "F3",
-    "FC1",
-    "FC3",
-    "FC5",
-    "CP1",
-    "CP3",
-    "CP5",
-    "P3",
+    'FZ','FCZ','CZ','CPZ','PZ',
+    'C1','C3','C5','C2','C4','C6',
+    'F4','FC2','FC4','FC6',
+    'CP2','CP4','CP6',
+    'P4',
+    'F3','FC1','FC3','FC5',
+    'CP1','CP3','CP5',
+    'P3',
     ]
+
+    # capitalize
+    DREYER_32 = [ch.upper() for ch in DREYER_32]
     return DREYER_32
 
 @dataclass
