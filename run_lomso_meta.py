@@ -142,9 +142,9 @@ def run_lomso(config_path: str):
         
         
         for fold_idx, test_pair in enumerate(folds, start=1):
-            if fold_idx in [1,2,3,4,5]:
-                logger.info(f"Skipping fold {fold_idx} for development purposes")
-                continue
+            # if fold_idx in [1,2,3,4,5]:
+            #     logger.info(f"Skipping fold {fold_idx} for development purposes")
+            #     continue
 
             cfg = copy.deepcopy(base_cfg)
             

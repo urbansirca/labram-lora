@@ -38,7 +38,7 @@ data:
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
-  meta_batch_size: 12
+  meta_batch_size: 25
   k_support: 3
   q_query: 100         # or null for “all remaining”
   q_eval: 50
@@ -49,8 +49,8 @@ meta:
   val_episodes_per_subject: 1
 
 supervised:
-  train_batch_size: 125
-  eval_batch_size: 125
+  train_batch_size: 500
+  eval_batch_size: 500
   n_epochs_supervised: 20
   meta_iters_per_meta_epoch: 1
   validate_meta_every: 0
@@ -70,17 +70,17 @@ labram:
   lora: true
   lr: 2e-4
   weight_decay: 0.0
-  sup_lr: 2e-4
-  sup_wd: 5e-4
+  sup_lr: 2e-3
+  sup_wd: 2e-3
   adapter_checkpoint_dir: #"/home/usirca/workspace/labram-lora/weights/checkpoints_meta/labram_AdamW_CosineAnnealingLR_114354/final_checkpoint_i800_acc0.688"
-  test_wd: 0.05
-  test_lr:  3e-5
+  test_wd: 5e-2
+  test_lr:  5e-5
   head_only_test: false
 
 peft_config:
   r: 2
-  lora_alpha: 16
-  lora_dropout: 0.1
+  lora_alpha: 8
+  lora_dropout: 0.5
   target_modules: ["qkv", "fc1", "proj"]
 
 eegnet:
@@ -109,12 +109,12 @@ deepconvnet:
 test:
   n_epochs: 10
   shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 3  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  n_repeats: 5  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results_meta/lomso_2" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 
 lomso:
-  max_folds: 10 # set to an integer to limit the number of folds for development purposes; if null, will use all folds
+  max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
   test_only: false # if true, will only run testing without training
-  skip_models: ["deepconvnet"] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
+  skip_models: [] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"

@@ -121,7 +121,7 @@ def run_lomso(config_path: str):
     results = {}
 
     if not test_only:
-        lomso_root = Path("lomso")
+        lomso_root = Path("lomso/trial_normalized2")
     else:
         lomso_root = Path("test_only_lomso")
         checkpoint_root = Path("lomso/lomso_run1") # I renamed it from lomso --> lomso_supervised to avoid confusion
@@ -129,17 +129,13 @@ def run_lomso(config_path: str):
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
 
-    subdir = "nikki"
-    lomso_root = lomso_root / subdir
-    lomso_root.mkdir(parents=True, exist_ok=True)
     for model_name in models:
         logger.info(f"Running LOMSO for model: {model_name}")
         # skip deepconvnet
         if model_name in skip_models:
             logger.info(f"Skipping {model_name} for now")
             continue
-        
-        
+                
         for fold_idx, test_pair in enumerate(folds, start=1):
             # if fold_idx in [1,2,3]:
             #     logger.info(f"Skipping fold {fold_idx} for development purposes")
@@ -162,7 +158,11 @@ def run_lomso(config_path: str):
             # set experiment name so checkpoints are separated per-fold
             experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
             
-            dest = lomso_root / model_name / experiment_name
+            model_folder = model_name
+            if model_name == "labram" and cfg.get("labram").get("head_only_train") == True:
+                model_folder += "_head_only"
+
+            dest = lomso_root / model_folder / experiment_name
             dest.mkdir(parents=True, exist_ok=True)
             
             cfg.setdefault("experiment", {})["checkpoint_dir"] = str(dest)
@@ -179,7 +179,7 @@ def run_lomso(config_path: str):
                     cfg.setdefault("labram", {})["adapter_checkpoint_dir"] = str(ckpt_file)
                 else:
                     raise ValueError(f"Unknown model name {model_name}")
-                                
+
             # create engine and tester
             engine, tester = get_engine(
                 cfg, with_tester=True, experiment_name=experiment_name
