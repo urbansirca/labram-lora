@@ -6,8 +6,6 @@ import random
 import numpy as np
 import torch
 
-from subject_split import KUTrialDataset
-
 
 # ----------------------------------------------------------------------------------------------
 @dataclass()
@@ -161,7 +159,7 @@ def sample_query(
 
 
 def fetch_by_indices(
-    ds: KUTrialDataset,
+    ds, #KUTrialDataset
     epi: EpisodeIndex,
     sid: int,
     local_idxs: List[int],
