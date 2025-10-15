@@ -82,10 +82,10 @@ def run(config_path: str):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
-    shots_list = base_cfg.get("test").get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
-    n_epochs = base_cfg.get("test").get("n_epochs", 10)
-    n_repeats = base_cfg.get("test").get("n_repeats", 10)
-    models = base_cfg.get("test").get("models", ["deepconvnet", "labram"])
+    shots_list = base_cfg.get("test").get("shots")
+    n_epochs = base_cfg.get("test").get("n_epochs")
+    n_repeats = base_cfg.get("test").get("n_repeats")
+    models = base_cfg.get("test").get("models")
 
     results = {}
 

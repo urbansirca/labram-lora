@@ -39,22 +39,22 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     SCHEDULER = exp_cfg["scheduler"]
 
     # optimizations
-    NUM_WORKERS = opt_cfg.get("num_workers", 0)
-    PIN_MEMORY = opt_cfg.get("pin_memory", False)
-    PERSISTENT_WORKERS = opt_cfg.get("persistent_workers", False)
-    NON_BLOCKING = opt_cfg.get("non_blocking", False)
-    USE_AMP = opt_cfg.get("use_amp", False)
+    NUM_WORKERS = opt_cfg.get("num_workers")
+    PIN_MEMORY = opt_cfg.get("pin_memory")
+    PERSISTENT_WORKERS = opt_cfg.get("persistent_workers")
+    NON_BLOCKING = opt_cfg.get("non_blocking")
+    USE_AMP = opt_cfg.get("use_amp")
 
-    electrodes = data_cfg.get("electrodes", None)
-    if electrodes is None and "dreyer" in data_cfg.get("path", "").lower():
+    electrodes = data_cfg.get("electrodes")
+    if electrodes is None and "dreyer" in data_cfg.get("path").lower():
         electrodes = get_dreyer_dataset_channels()  # Dreyer uses the same 32 channels as KU
         logger.info(f"USING DREYER 27 CHANNELS: {electrodes}")
         
-    elif electrodes is None and "ku" in data_cfg.get("path", "").lower():
+    elif electrodes is None and "ku" in data_cfg.get("path").lower():
         electrodes = get_ku_dataset_channels()
         logger.info(f"USING KU CHANNELS: {electrodes}")
     
-    elif electrodes is None and "nikki" in data_cfg.get("path", "").lower():
+    elif electrodes is None and "nikki" in data_cfg.get("path").lower():
         electrodes = get_nikki_dataset_channels()
         logger.info(f"USING NIKKI CHANNELS: {electrodes}")
     else:
@@ -99,8 +99,8 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 except Exception as e:
                     # Handle NG models
                     model = DeepConvNet(
-                        in_chans=data_cfg.get("input_channels", 62),
-                        n_classes=data_cfg.get("num_classes", 2),
+                        in_chans=data_cfg.get("input_channels"),
+                        n_classes=data_cfg.get("num_classes"),
                         input_time_length=1000,
                         final_conv_length="auto",
                     )
@@ -129,19 +129,19 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
 
         elif model_name == "eegnet":
             hyperparameters = config.get("eegnet")
-            chans = data_cfg.get("input_channels", 62)
-            samples = data_cfg.get("samples", 800)
-            classes = data_cfg.get("num_classes", 2)
+            chans = data_cfg.get("input_channels")
+            samples = data_cfg.get("samples")
+            classes = data_cfg.get("num_classes")
             model = EEGNet(
                 nb_classes=classes,
                 Chans=chans,
                 Samples=samples,
-                dropoutRate=hyperparameters.get("dropoutRate", 0.5),
-                kernLength=hyperparameters.get("kernLength", 64),
-                F1=hyperparameters.get("F1", 8),
-                D=hyperparameters.get("D", 2),
+                dropoutRate=hyperparameters.get("dropoutRate"),
+                kernLength=hyperparameters.get("kernLength"),
+                F1=hyperparameters.get("F1"),
+                D=hyperparameters.get("D"),
                 F2=hyperparameters.get(
-                    "F2", hyperparameters.get("F1", 8) * hyperparameters.get("D", 2)
+                    "F2", hyperparameters.get("F1") * hyperparameters.get("D")
                 ),
             )
             print("MODEL",model)
@@ -201,7 +201,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     # ---------------- data/splits ------------
     DATASET_PATH = data_cfg["path"]
     SUBJECT_IDS = data_cfg.get("subjects") or range(1, exp_cfg["n_subjects"] + 1)
-    TRAIN_PROP = data_cfg.get("train_proportion", 0.90)
+    TRAIN_PROP = data_cfg.get("train_proportion")
     LEAVE_OUT = data_cfg.get("leave_out")
     M_LEAVE_OUT = data_cfg.get("m_leave_out")
 
@@ -227,10 +227,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
 
     # ---------------- loaders ----------------
     TRAIN_BS = samp_cfg.get("train_batch_size")
-    EVAL_BS = samp_cfg.get("eval_batch_size", TRAIN_BS)
-    DROP_LAST = samp_cfg.get("drop_last", False)
-    SHUF_SUBJ = samp_cfg.get("shuffle_subjects", True)
-    SHUF_TRIALS = samp_cfg.get("shuffle_trials", True)
+    EVAL_BS = samp_cfg.get("eval_batch_size")
+    DROP_LAST = samp_cfg.get("drop_last")
+    SHUF_SUBJ = samp_cfg.get("shuffle_subjects")
+    SHUF_TRIALS = samp_cfg.get("shuffle_trials")
 
     g_train = torch.Generator().manual_seed(SEED)
 
@@ -322,8 +322,8 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         elif SCHEDULER == "CosineAnnealingWarmRestarts":
             return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizer,
-                T_0=N_EPOCHS // exp_cfg.get("T_0", 2),
-                T_mult=exp_cfg.get("T_mult", 2),
+                T_0=N_EPOCHS // exp_cfg.get("T_0"),
+                T_mult=exp_cfg.get("T_mult"),
             )
         elif SCHEDULER in (None, "None"):
             return None
@@ -361,15 +361,15 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         non_blocking=NON_BLOCKING,
         pin_memory=PIN_MEMORY,
         use_amp=USE_AMP,
-        use_compile=opt_cfg.get("use_compile", False),
+        use_compile=opt_cfg.get("use_compile"),
         use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
         wandb_project=exp_cfg.get("wandb_project", "EEG-FM"),
         config_for_logging=config,
-        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints", False),
-        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
-        save_best_checkpoints=exp_cfg.get("save_best_checkpoints", True),
-        save_final_checkpoint=exp_cfg.get("save_final_checkpoint", True),
+        save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints"),
+        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval"),
+        save_best_checkpoints=exp_cfg.get("save_best_checkpoints"),
+        save_final_checkpoint=exp_cfg.get("save_final_checkpoint"),
         checkpoint_dir=checkpoint_dir,
         # --- SPECIFIC ---
         n_epochs=N_EPOCHS,
@@ -383,12 +383,12 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         optimizer_factory=make_optimizer,
         scheduler_factory=make_scheduler,
         # early stopping
-        early_stopping=exp_cfg.get("early_stopping", True),
-        early_stopping_patience=exp_cfg.get("early_stopping_patience", 10),
-        early_stopping_delta=exp_cfg.get("early_stopping_delta", 0.0),
+        early_stopping=exp_cfg.get("early_stopping"),
+        early_stopping_patience=exp_cfg.get("early_stopping_patience"),
+        early_stopping_delta=exp_cfg.get("early_stopping_delta"),
         # train-after-stopping
-        train_after_stopping=exp_cfg.get("train_after_stopping", False),
-        train_after_stopping_epochs=exp_cfg.get("train_after_stopping_epochs", 0),
+        train_after_stopping=exp_cfg.get("train_after_stopping"),
+        train_after_stopping_epochs=exp_cfg.get("train_after_stopping_epochs"),
     )
 
     if not with_tester:
@@ -398,7 +398,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
-        use_wandb=exp_cfg.get("log_to_wandb_test", False),
+        use_wandb=exp_cfg.get("log_to_wandb_test"),
         wandb_prefix="test",
         run_size=100,
         save_dir=exp_cfg.get("test").get("save_dir_root", Path("results/test")) / model_str / experiment_name,
