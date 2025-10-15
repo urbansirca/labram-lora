@@ -284,6 +284,7 @@ class DeepConvNet(nn.Module):
                 f"DeepConvNet expects (B,C,T) or (B,C,P,T), got shape {tuple(x.shape)}"
             )
 
+        # print("DeepConvNet input shape:", x.shape)  # Debug print
         # Braindecode DeepConvNet expects input as (B, C, T, 1)
         x = x.unsqueeze(-1)
         out = self.model(x)

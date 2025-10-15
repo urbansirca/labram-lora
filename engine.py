@@ -211,15 +211,21 @@ class Engine(BaseEngine):
             for epoch in range(self.train_after_stopping_epochs):
                 self.metrics.epoch += 1
                 self.train_epoch(self.train_after_stopping_set)
-                self.log_metrics()
+                
+                if self.scheduler is not None:
+                    self.scheduler.step()
 
-                if (
-                    self.metrics.train_loss <= self.best_val_loss
-                ):  # use train_loss because val_loss is None
-                    logger.info(
-                        f"Training after stopping stopped at epoch {epoch} because target loss was reached"
-                    )
-                    break
+                self.log_metrics()
+                
+
+
+                # if (
+                #     self.metrics.train_loss <= self.best_val_loss
+                # ):  # use train_loss because val_loss is None
+                #     logger.info(
+                #         f"Training after stopping stopped at epoch {epoch} because target loss was reached"
+                #     )
+                #     break
                 self.save_regular_checkpoint(joined=True)
 
             self.checkpoint(name=f"FINAL_e{self.metrics.epoch}")

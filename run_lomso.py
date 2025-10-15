@@ -30,13 +30,17 @@ def build_subject_list(config):
     return list(subjects)
 
 
-def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best"):
+def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best", head_only=False):
     """
     gets the checkpoint file for a given model and leave_out subjects for LOMSO. 
     type can be best or final
     """
     
     model_dir = Path(root_dir) / model_name
+    
+    # for labram head_only, the model dir is labram_head_only
+    if model_name == "labram" and head_only:
+        model_dir = Path(root_dir) / "labram_head_only"
     
     print(f"Looking for model directory {model_dir}")
     if not model_dir.exists():
@@ -113,9 +117,9 @@ def run_lomso(config_path: str):
     logger.info(f"Built {len(folds)} test folds (pairwise), max_folds={max_folds}")
     logger.info(f"Test pairs: {folds}")
 
-    shots_list = base_cfg.get("test", {}).get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
-    n_epochs = base_cfg.get("test", {}).get("n_epochs", 10)
-    n_repeats = base_cfg.get("test", {}).get("n_repeats", 10)
+    shots_list = base_cfg.get("test", {}).get("shots")
+    n_epochs = base_cfg.get("test", {}).get("n_epochs")
+    n_repeats = base_cfg.get("test", {}).get("n_repeats")
     models = base_cfg.get("test", {}).get("models")
 
     results = {}
@@ -123,8 +127,8 @@ def run_lomso(config_path: str):
     if not test_only:
         lomso_root = Path("lomso/trial_normalized2")
     else:
-        lomso_root = Path("test_only_lomso")
-        checkpoint_root = Path("lomso/lomso_run1") # I renamed it from lomso --> lomso_supervised to avoid confusion
+        lomso_root = Path("test_only_lomso/final_results3")
+        checkpoint_root = Path("lomso/trial_normalized") 
     # if lomso_root.exists():
     #     raise ValueError(f"Directory {lomso_root} already exists. Please move or delete it before running.")
     lomso_root.mkdir(parents=True, exist_ok=True)
@@ -135,11 +139,22 @@ def run_lomso(config_path: str):
         if model_name in skip_models:
             logger.info(f"Skipping {model_name} for now")
             continue
-                
+        
+        
+        # for head_only in [True, False]:
+        #     if head_only:
+        #         logger.info("Running LOMSO with head_only=True (only fine-tune classification head)")
+        #         base_cfg.setdefault("labram", {})["head_only_train"] = True
+        #         base_cfg.setdefault("labram", {})["head_only_test"] = True
+        #     else:
+        #         logger.info("Running LOMSO with head_only=False (fine-tune entire model)")
+        #         base_cfg.setdefault("labram", {})["head_only_train"] = False
+        #         base_cfg.setdefault("labram", {})["head_only_test"] = False
+        
         for fold_idx, test_pair in enumerate(folds, start=1):
-            # if fold_idx in [1,2,3]:
-            #     logger.info(f"Skipping fold {fold_idx} for development purposes")
-            #     continue
+            if fold_idx > 17 or fold_idx < 3: 
+                logger.info(f"Skipping fold {fold_idx} for development purposes")
+                continue
 
             cfg = copy.deepcopy(base_cfg)
             
@@ -148,9 +163,6 @@ def run_lomso(config_path: str):
 
             # set model in experiment cfg
             cfg.setdefault("experiment", {})["model"] = model_name
-            
-            if model_name == "mirepnet":
-                cfg.setdefault("data", {})["path"] = "data/preprocessed/KU_mi_labram_preprocessed_trial_norm_NG_format.h5"
 
             # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
             cfg.setdefault("data", {})["leave_out"] = list(test_pair)
@@ -172,7 +184,7 @@ def run_lomso(config_path: str):
 
             if test_only and model_name in ["deepconvnet", "labram"]:
                 # get checkpoint file from lomso_root
-                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best")
+                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type="best", head_only=cfg.get("labram", {}).get("head_only_train", False))
                 if model_name == "deepconvnet":
                     cfg.setdefault("deepconvnet", {})["checkpoint_file"] = str(ckpt_file)
                 elif model_name == "labram":

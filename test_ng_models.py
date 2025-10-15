@@ -89,7 +89,7 @@ def run(config_path: str):
 
     results = {}
 
-    lomso_root = Path("ng_testing") / "raw_dataset"
+    lomso_root = Path("ng_testing") / "final_results"
     lomso_root.mkdir(parents=True, exist_ok=True)
     
     weights_path = Path(WEIGHTS_DIR)
@@ -99,7 +99,7 @@ def run(config_path: str):
     
     model_names = [p.stem for p in model_files]
 
-    for model_path in model_files:
+    for model_path in model_files[28:]:
         model_path = str(model_path)
         idx = int(model_path.split("model_f")[-1].split(".")[0])
         subject = subjs[idx]
@@ -110,9 +110,9 @@ def run(config_path: str):
 
         cfg = copy.deepcopy(base_cfg)
         
-        cfg.setdefault("data", {})["path"] = "data/preprocessed/ng/KU_mi_smt.h5"
+        cfg.setdefault("data", {})["path"] = "/home/usirca/workspace/labram-lora/data/preprocessed/ng/KU_mi_deepconvnet_preprocessed_trial_norm_NG_1000_car_only.h5"
         # just for now
-        # cfg.setdefault(model_name, {})["head_only_test"] = head_only
+        cfg.setdefault("data", {})["samples"] = 1000
 
         # set model in experiment cfg
         cfg.setdefault("experiment", {})["model"] = "deepconvnet"
@@ -145,7 +145,7 @@ def run(config_path: str):
 
         # run tests (tester.test_all_subjects uses the split's test subjects)
         all_results = tester.test_all_subjects(
-            shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats
+            shots_list=shots_list, n_epochs=n_epochs, n_repeats=n_repeats, 
         )
 
         results[f"{model_name}/{experiment_name}"] = {

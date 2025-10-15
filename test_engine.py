@@ -592,7 +592,7 @@ class TestEngine:
         shots_list: List[int] = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25],
         n_epochs: int = 10,
         n_repeats: int = 10,
-        use_cv_epoch_selection: bool = True,
+        use_cv_epoch_selection: bool = False,
         cv_min_shots: int = 6,
         cv_val_frac: float = 0.2,
         cv_min_per_class: int = 1,

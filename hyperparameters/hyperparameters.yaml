@@ -41,7 +41,7 @@ optimizations:
 
 # KU
 data:
-  path:  "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
+  path:   "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
   # choose exactly one of the two lines below:
   leave_out: [20, 39]             # explicit test subjects 
@@ -106,8 +106,8 @@ labram:
   adapter_checkpoint_dir: null
   test_lr: 0.00005
   test_wd: 0.05
-  head_only_train: true # if true, will only train the classification head during few-shot learning
-  head_only_test: true # if true, will only fine-tune the classification head during
+  head_only_train: false # if true, will only train the classification head during few-shot learning
+  head_only_test: false # if true, will only fine-tune the classification head during
 
 deepconvnet:
   lr: 0.001
@@ -151,13 +151,13 @@ eegnet:
 
 
 test:
-  n_epochs: 10
-  shots: [0, 1, 2, 3, 4, 5, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  n_epochs: 20
+  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 lomso:
   max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
-  test_only: false # if true, will only run testing without training
+  test_only: true # if true, will only run testing without training
   skip_models: [] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
