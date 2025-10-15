@@ -16,43 +16,53 @@ logger = logging.getLogger(__name__)
 
 from testing_utils import build_subject_list, get_checkpoint_file
 
-def run_lomso(config_path: str, with_meta: bool = False):
+def run_lomso(config_path: str, with_meta: bool = False, run_loso: bool = False):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
     max_folds = base_cfg.get("lomso").get("max_folds")
     test_only = base_cfg.get("lomso").get("test_only")
 
+    if run_loso and test_only:
+        raise ValueError(
+            "Invalid configuration: '--run-loso' and 'test_only: true' cannot be used together.\n"
+            "LOMSO mode performs fold-based training/testing, whereas 'test_only' "
+            "disables training entirely."
+        )
+
     # ---- subjects / folds ----------------------------------------------------
     subjects = build_subject_list(base_cfg)
     N = len(subjects)
-    if N < 4:
-        raise ValueError("Need at least 4 subjects for 2-test/2-val LOMSO")
+
 
     # Build folds so that each subject is in test exactly once and in val exactly once.
     # Approach: shuffle subjects deterministically using config seed (if present),
     # pair adjacent subjects into M pairs, then for i in 0..M-1 create fold with
     # test = pair[i], val = pair[(i+1) mod M]. This yields exactly M folds and each
     # subject appears in test once and val once.
-    exp_seed = base_cfg.get("experiment").get("seed")
-    rng = random.Random(exp_seed) if exp_seed is not None else random.Random()
+    if not run_loso:
 
-    if len(subjects) % 2 != 0:
-        raise ValueError("Number of subjects must be even for pairwise LOMSO folding")
+        exp_seed = base_cfg.get("experiment").get("seed")
+        rng = random.Random(exp_seed) if exp_seed is not None else random.Random()
 
-    shuffled = subjects.copy()
-    rng.shuffle(shuffled)
-    pairs = [tuple(shuffled[i : i + 2]) for i in range(0, len(shuffled), 2)]
+        if len(subjects) % 2 != 0:
+            raise ValueError("Number of subjects must be even for pairwise LOMSO folding")
 
-    # For LOMSO we only specify test pairs here; validation will be handled
-    # by the SplitManager inside get_engine using train_proportion from config.
-    folds = [tuple(sorted(p)) for p in pairs]
+        shuffled = subjects.copy()
+        rng.shuffle(shuffled)
+        pairs = [tuple(shuffled[i : i + 2]) for i in range(0, len(shuffled), 2)]
+
+        # For LOMSO we only specify test pairs here; validation will be handled
+        # by the SplitManager inside get_engine using train_proportion from config.
+        folds = [tuple(sorted(p)) for p in pairs]
+    else:
+        folds = subjects
     if max_folds is not None:
         folds = folds[:max_folds]
 
     logger.info(f"Built {len(folds)} test folds (pairwise), max_folds={max_folds}")
     logger.info(f"Test pairs: {folds}")
-
+    
     # ---- testing params ------------------------------------------------------
     shots_list = base_cfg.get("test").get("shots")
     n_epochs = base_cfg.get("test").get("n_epochs")
@@ -87,7 +97,10 @@ def run_lomso(config_path: str, with_meta: bool = False):
             cfg.setdefault("data")["leave_out"] = list(test_pair)
     
             # set experiment name so checkpoints are separated per-fold
-            experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
+            if run_loso:
+                experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{subj}"
+            else:
+                experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
             
             model_folder = model_name
             if model_name == "labram" and cfg.get("labram").get("head_only_train") == True:
@@ -98,7 +111,7 @@ def run_lomso(config_path: str, with_meta: bool = False):
             
             cfg.setdefault("experiment")["checkpoint_dir"] = str(dest)
 
-            if test_only and model_name in ["deepconvnet", "labram"]:
+            if test_only and model_name in ["deepconvnet", "labram"] and not run_loso:
                 # get checkpoint file from lomso_root
                 ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type=ckpt_type, head_only=cfg.get("labram").get("head_only_train"))
                 if model_name == "deepconvnet":
@@ -175,9 +188,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the meta-learning engine instead of the standard one",
     )
+    parser.add_argument(
+        "--run-loso",
+        action="store_true",
+        help="Use the meta-learning engine instead of the standard one",
+    )
     args = parser.parse_args()
 
     if args.with_meta:
-        run_lomso("hyperparameters/meta_hyperparameters.yaml", with_meta = True)
+        run_lomso("hyperparameters/meta_hyperparameters.yaml", with_meta = True, run_loso = args.run_loso)
     else:
-        run_lomso("hyperparameters/hyperparameters.yaml", with_meta = False)
+        run_lomso("hyperparameters/hyperparameters.yaml", with_meta = False, run_loso = args.run_loso)

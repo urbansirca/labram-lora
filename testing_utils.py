@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 def build_subject_list(config):
     data_cfg = config.get("data", {})
