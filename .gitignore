@@ -211,3 +211,5 @@ ng_testing/*.job
 
 
 *.job
+
+ng_testing/
