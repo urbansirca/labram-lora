@@ -67,6 +67,7 @@ optimizations:
 
 # Model-specific blocks
 labram:
+  head_only_train: false # for test compatibility
   lora: true
   lr: 2e-4
   weight_decay: 0.0
@@ -117,4 +118,13 @@ test:
 lomso:
   max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
   test_only: true # if true, will only run testing without training
-  skip_models: [] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
+
+  train_root: "lomso"                    # when test_only = false
+  test_root: "test_only_lomso"           # when test_only = true
+  subdir: "alternating_run1"             # optional, appended to the root
+
+  checkpoint_root: "lomso/alternating_run1"  # where trained ckpts live (used only if test_only)
+  type: "best"                           # "best" | "final"
+
+  use_cv_epoch_selection: false
+  cv_min_shots: 6 

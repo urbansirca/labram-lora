@@ -394,7 +394,7 @@ class MetaEngine(BaseEngine):
         self.metrics.val_loss = torch.stack(total_losses).mean().cpu().item()
         self.metrics.val_accuracy = float(total_correct) / max(1, int(total_count))
 
-    def meta_train(self):
+    def train(self):
         for i in range(1, self.meta_iterations + 1):
             self.metrics.iteration = i
             T = min(self.T, len(self.S_train))

@@ -330,7 +330,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
  
     meta_engine, tester = get_meta_engine(config, with_tester=True)
-    meta_engine.meta_train()
+    meta_engine.train()
 
     all_results = tester.test_all_subjects(
             shots_list= config.get("test").get("shots"),
