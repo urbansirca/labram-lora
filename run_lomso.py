@@ -167,9 +167,17 @@ def run_lomso(config_path: str, with_meta: bool = False):
         with open(outp, "w") as f:
             yaml.safe_dump(results, f)
 
-
 if __name__ == "__main__":
-    # run_lomso("hyperparameters/meta_hyperparameters.yaml", with_meta = True)
-    run_lomso("hyperparameters/hyperparameters.yaml", with_meta = False)
-    
-    
+    import argparse
+    parser = argparse.ArgumentParser(description="Run LOMSO training/testing pipeline.")
+    parser.add_argument(
+        "--with-meta",
+        action="store_true",
+        help="Use the meta-learning engine instead of the standard one",
+    )
+    args = parser.parse_args()
+
+    if args.with_meta:
+        run_lomso("hyperparameters/meta_hyperparameters.yaml", with_meta = True)
+    else:
+        run_lomso("hyperparameters/hyperparameters.yaml", with_meta = False)
