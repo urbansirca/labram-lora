@@ -68,7 +68,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         model_str = "deepconvnet"
     elif model_name == "eegnet":
         model_str = "eegnet"
-        hyperparameters = config.get("eegnet", {})
+        hyperparameters = config.get("eegnet")
         model = EEGNet(
             nb_classes=int(data_cfg.get("num_classes")),
             Chans=int(data_cfg.get("n_channels")),

@@ -82,10 +82,10 @@ def run(config_path: str):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
-    shots_list = base_cfg.get("test", {}).get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
-    n_epochs = base_cfg.get("test", {}).get("n_epochs", 10)
-    n_repeats = base_cfg.get("test", {}).get("n_repeats", 10)
-    models = base_cfg.get("test", {}).get("models", ["deepconvnet", "labram"])
+    shots_list = base_cfg.get("test").get("shots", [0, 1, 2, 5, 10, 15, 20, 25])
+    n_epochs = base_cfg.get("test").get("n_epochs", 10)
+    n_repeats = base_cfg.get("test").get("n_repeats", 10)
+    models = base_cfg.get("test").get("models", ["deepconvnet", "labram"])
 
     results = {}
 
@@ -110,16 +110,16 @@ def run(config_path: str):
 
         cfg = copy.deepcopy(base_cfg)
         
-        cfg.setdefault("data", {})["path"] = "/home/usirca/workspace/labram-lora/data/preprocessed/ng/KU_mi_deepconvnet_preprocessed_trial_norm_NG_1000_car_only.h5"
+        cfg.setdefault("data")["path"] = "/home/usirca/workspace/labram-lora/data/preprocessed/ng/KU_mi_deepconvnet_preprocessed_trial_norm_NG_1000_car_only.h5"
         # just for now
-        cfg.setdefault("data", {})["samples"] = 1000
+        cfg.setdefault("data")["samples"] = 1000
 
         # set model in experiment cfg
-        cfg.setdefault("experiment", {})["model"] = "deepconvnet"
-        cfg.setdefault("deepconvnet", {})["checkpoint_file"] = str(model_path)
+        cfg.setdefault("experiment")["model"] = "deepconvnet"
+        cfg.setdefault("deepconvnet")["checkpoint_file"] = str(model_path)
 
         # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
-        cfg.setdefault("data", {})["leave_out"] = [subject]
+        cfg.setdefault("data")["leave_out"] = [subject]
 
         # set experiment name so checkpoints are separated per-fold
         experiment_name = f"test_subject_{subject}_{model_name}"
@@ -127,7 +127,7 @@ def run(config_path: str):
         dest = lomso_root / experiment_name
         dest.mkdir(parents=True, exist_ok=True)
         
-        cfg.setdefault("experiment", {})["checkpoint_dir"] = str(dest)
+        cfg.setdefault("experiment")["checkpoint_dir"] = str(dest)
                             
         # create engine and tester
         engine, tester = get_engine(

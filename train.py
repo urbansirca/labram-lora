@@ -27,10 +27,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     # ---------------- config -----------------
 
 
-    exp_cfg = config.get("experiment", {})
-    data_cfg = config.get("data", {})
-    samp_cfg = config.get("sampler", {})
-    opt_cfg = config.get("optimizations", {})
+    exp_cfg = config.get("experiment")
+    data_cfg = config.get("data")
+    samp_cfg = config.get("sampler")
+    opt_cfg = config.get("optimizations")
 
     # core exp settings
     SEED = exp_cfg["seed"]
@@ -82,7 +82,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 
 
         elif model_name == "deepconvnet":
-            hyperparameters = config.get("deepconvnet", {})
+            hyperparameters = config.get("deepconvnet")
             model_str = "deepconvnet"
             model = DeepConvNet(
                     in_chans=data_cfg.get("input_channels"),
@@ -128,7 +128,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 model = freeze_all_but_head_deepconvnet(model)
 
         elif model_name == "eegnet":
-            hyperparameters = config.get("eegnet", {})
+            hyperparameters = config.get("eegnet")
             chans = data_cfg.get("input_channels", 62)
             samples = data_cfg.get("samples", 800)
             classes = data_cfg.get("num_classes", 2)
@@ -148,7 +148,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             model_str = "eegnet"
             
         elif model_name == "mirepnet":
-            hyperparameters = config.get("mirepnet", {})
+            hyperparameters = config.get("mirepnet")
             model_str = "mirepnet"
             from models.mirepnet import make_mirepnet
             model = make_mirepnet(
@@ -401,7 +401,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         use_wandb=exp_cfg.get("log_to_wandb_test", False),
         wandb_prefix="test",
         run_size=100,
-        save_dir=exp_cfg.get("test", {}).get("save_dir_root", Path("results/test")) / model_str / experiment_name,
+        save_dir=exp_cfg.get("test").get("save_dir_root", Path("results/test")) / model_str / experiment_name,
         head_only=hyperparameters.get("head_only_test"),
         test_lr=hyperparameters.get("test_lr"),
         test_wd=hyperparameters.get("test_wd"),

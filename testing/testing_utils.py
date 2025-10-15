@@ -2,8 +2,8 @@ from pathlib import Path
 import re
 
 def build_subject_list(config):
-    data_cfg = config.get("data", {})
-    exp_cfg = config.get("experiment", {})
+    data_cfg = config.get("data")
+    exp_cfg = config.get("experiment")
     subjects = data_cfg.get("subjects")
     if subjects is None:
         n = exp_cfg.get("n_subjects")
