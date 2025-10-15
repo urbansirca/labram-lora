@@ -13,7 +13,7 @@ experiment:
   log_to_wandb: true
   log_to_wandb_test: false
   wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
-  n_subjects: 10 # 54 / 55 / 87
+  n_subjects: 54 # 54 / 55 / 87
   checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
 
   save_regular_checkpoints: false
@@ -26,7 +26,7 @@ experiment:
   early_stopping_delta: 0.001
 
 
-  epochs: 3
+  epochs: 30
   train_after_stopping: false # if true, will train the model after early stopping
   train_after_stopping_epochs: 3
 
@@ -151,20 +151,20 @@ eegnet:
 
 
 test:
-  n_epochs: 4
-  shots: [0, 1, 2, 3, 4] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 4  # number of repeats for few-shot learning (with different random samples each time)
+  n_epochs: 20
+  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
   models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 lomso:
-  max_folds: 3 # set to an integer to limit the number of folds for development purposes; if null, will use all folds
-  test_only: false # if true, will only run testing without training
+  max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
+  test_only: true # if true, will only run testing without training
 
   # this will build the folowing paths: <train_root/test_root>/<test_root>/<subdir>/
-  train_root: "lomso_new_loso"                    # when test_only = false 
+  train_root: "lomso_new"                    # when test_only = false 
   test_root: "test_only_lomso_new"           # when test_only = true
-  subdir: "test_run_loso"             # optional, appended to the root
+  subdir: "test_run"             # optional, appended to the root
 
   checkpoint_root: "lomso"  # where trained ckpts live (used only if test_only)
   type: "best"                           # "best" | "final"
