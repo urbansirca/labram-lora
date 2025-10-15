@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy
 
-from engine import Engine
+from engines import Engine
 from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from test_engine import TestEngine
