@@ -1,0 +1,163 @@
+
+
+experiment:
+  name: null 
+  model: "labram" # "deepconvnet" or "eegnet" or "labram". for lomso not used
+  seed: 111
+  dataset: "KU"
+  optimizer: "AdamW"
+  scheduler: null #"CosineAnnealingLR"
+  T_0: 2 # CosineAnnealingWarmRestarts hyperparameter
+  T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
+  device: "cuda"
+  log_to_wandb: true
+  log_to_wandb_test: false
+  wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
+  n_subjects: 54 # 54 / 55 / 87
+  checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
+
+  save_regular_checkpoints: false
+  save_regular_checkpoints_interval: 1 # best val will also not save before this
+  save_final_checkpoint: true
+  save_best_checkpoints: true
+
+  early_stopping: false
+  early_stopping_patience: 5
+  early_stopping_delta: 0.001
+
+
+  epochs: 1
+  train_after_stopping: true # if true, will train the model after early stopping
+  train_after_stopping_epochs: 30
+
+optimizations:
+  non_blocking: false
+  pin_memory: false
+  persistent_workers: false
+  num_workers: 0 # if persistent_workers is true, then num_workers should be greater than 0
+  use_amp: false # use automatic mixed precision - TURNING ON PREVENTS CONVERGENCE
+  use_compile: false # use torch.compile
+
+
+# KU
+data:
+  path:   "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
+  electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
+  # choose exactly one of the two lines below:
+  leave_out: [0]             # explicit test subjects 
+  m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
+  train_proportion: 0.999   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
+  subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
+  num_classes: 2 
+  input_channels: 62
+  samples: 800 # 800 for eegnet
+  n_patches_labram: 4 # number of patches in the labram model
+  patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
+  trial_length: 800 # length of the trial in samples
+  fs: 200 # sampling frequency (downsampled from 1000 Hz)
+
+# DREYER
+# data:
+#   path: /home/usirca/workspace/labram-lora/data/preprocessed/dreyer/ABC_labram_preprocessed_trial_norm.h5 # "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
+#   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
+#   # choose exactly one of the two lines below:
+#   leave_out: [20, 39]             # explicit test subjects 
+#   m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
+#   train_proportion: 0.9   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
+#   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
+#   num_classes: 2 
+#   input_channels: 27
+#   samples: 1000 # 800 for eegnet
+#   n_patches_labram: 5 # number of patches in the labram model
+#   patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
+#   trial_length: 1000 # length of the trial in samples
+#   fs: 200 # sampling frequency (downsampled from 1000 Hz)
+
+
+
+# # NIKKI
+# data:
+#   path: /home/usirca/workspace/labram-lora/data/preprocessed/nikki/NIKKI_dataset.h5 
+#   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
+#   # choose exactly one of the two lines below:
+#   leave_out: [20, 39]             # explicit test subjects 
+#   m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
+#   train_proportion: 0.9   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
+#   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
+#   num_classes: 2 
+#   input_channels: 16
+#   samples: 1250 #  for eegnet
+#   n_patches_labram: null # number of patches in the labram model
+#   patch_length: null # length of the patch in samples (trial_length / n_patches_labram)
+#   trial_length: 1250 # length of the trial in samples
+#   fs: 250 # sampling frequency (downsampled from 1000 Hz)
+
+sampler:
+  train_batch_size: 250
+  eval_batch_size: 250
+  drop_last: false
+  shuffle_subjects: true
+  shuffle_trials: true
+
+labram:
+  lr: 0.002
+  weight_decay: 0.002
+  lora: true
+  adapter_checkpoint_dir: null
+  test_lr: 0.00005
+  test_wd: 0.05
+  head_only_train: false # if true, will only train the classification head during few-shot learning
+  head_only_test: false # if true, will only fine-tune the classification head during
+
+deepconvnet:
+  lr: 0.001
+  weight_decay: 0.0001
+  checkpoint_file: null # if not null, will load model from this checkpoint
+  test_lr: 0.0001
+  test_wd: 0.001
+  head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
+  head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
+
+mirepnet:
+  lr: 0.01
+  weight_decay: 0.0001
+  checkpoint_file: null # if not null, will load model from this checkpoint
+  test_lr: 0.0001
+  test_wd: 0.001
+  head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
+  head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
+  use_lora: false
+  adapter_checkpoint_dir: null # if not null, will load adapter weights from this checkpoint
+
+
+peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
+  r: 2
+  lora_alpha: 8
+  lora_dropout: 0.5
+  target_modules: [   # ignored for mirepnet
+    "proj",
+    "qkv",
+    "fc1"
+  ]
+
+eegnet:
+  lr: 0.001
+  weight_decay: 0.02
+  dropoutRate: 0.5
+  kernLength: 64
+  F1: 8
+  D: 2
+  F2: 16
+
+
+test:
+  n_epochs: 20
+  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
+
+lomso:
+  max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
+  test_only: false # if true, will only run testing without training
+  skip_models: [] # ["deepconvnet"] # list of models to skip during training and testing; options are "deepconvnet", "eegnet", "labram"
