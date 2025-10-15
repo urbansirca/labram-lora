@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.func import functional_call
 
-from meta_helpers import (
+from .meta_helpers import (
     build_episode_index,
     sample_support,
     sample_query,
@@ -17,7 +17,7 @@ from meta_helpers import (
 
 from torch.utils.data import DataLoader
 
-from base_engine import BaseEngine
+from .base_engine import BaseEngine
 logger = logging.getLogger(__name__)
 
 

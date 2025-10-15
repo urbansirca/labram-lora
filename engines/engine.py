@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 import wandb
 
-from base_engine import BaseEngine
+from .base_engine import BaseEngine
 
 logger = logging.getLogger(__name__)
 
