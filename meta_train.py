@@ -11,7 +11,7 @@ from engines import MetaEngine
 from models import EEGNet, load_labram, load_labram_with_adapter, DeepConvNet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from preprocessing.preprocess_KU_data import get_ku_dataset_channels
-from test_engine import TestEngine
+from engines import TestEngine
 
 logging.basicConfig(
     level=logging.INFO,

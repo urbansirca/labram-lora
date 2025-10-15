@@ -11,7 +11,7 @@ import numpy
 from engines import Engine
 from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
-from test_engine import TestEngine
+from engines import TestEngine
 from preprocessing.preprocess_KU_data import get_ku_dataset_channels, get_dreyer_dataset_channels, get_nikki_dataset_channels
 
 
