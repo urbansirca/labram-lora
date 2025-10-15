@@ -528,12 +528,12 @@ class TestEngine:
                 cv_cols = {
                     "cv_used": True,
                     "cv_chosen_best_epochs": int(chosen_epochs),
-                    "cv_n_folds": int(cv_out.get("n_folds", 0)) if cv_out.get("n_folds") is not None else float("nan"),
-                    "cv_fold_best_epochs": json.dumps(cv_out.get("fold_best_epochs", [])),
-                    "cv_within_cv_range": float(cv_out.get("within_cv_range", float("nan"))),
-                    "cv_within_cv_std": float(cv_out.get("within_cv_std", float("nan"))),
-                    "cv_mean_val_by_epoch": json.dumps(cv_out.get("cv_mean_val_by_epoch", [])),
-                    "cv_std_val_by_epoch": json.dumps(cv_out.get("cv_std_val_by_epoch", [])),
+                    "cv_n_folds": int(cv_out.get("n_folds")) if cv_out.get("n_folds") is not None else float("nan"),
+                    "cv_fold_best_epochs": json.dumps(cv_out.get("fold_best_epochs")),
+                    "cv_within_cv_range": float(cv_out.get("within_cv_range")),
+                    "cv_within_cv_std": float(cv_out.get("within_cv_std")),
+                    "cv_mean_val_by_epoch": json.dumps(cv_out.get("cv_mean_val_by_epoch")),
+                    "cv_std_val_by_epoch": json.dumps(cv_out.get("cv_std_val_by_epoch")),
                 }
             else:
                 run = self._adapt_and_evaluate(subject_id, n_shots, n_epochs, rep=rep)
@@ -550,11 +550,11 @@ class TestEngine:
                 }
 
 
-            acc_q = run.get("accuracy_q", [])
-            acc_s = run.get("accuracy_s", [])
-            loss_q = run.get("loss_q", [])
-            loss_s = run.get("loss_s", [])
-            epoch_runtimes = run.get("epoch_runtimes", [])
+            acc_q = run.get("accuracy_q")
+            acc_s = run.get("accuracy_s")
+            loss_q = run.get("loss_q")
+            loss_s = run.get("loss_s")
+            epoch_runtimes = run.get("epoch_runtimes")
 
             row = {
                     "subject_id": subject_id,
@@ -563,9 +563,9 @@ class TestEngine:
                     "final_accuracy": (acc_q[-1] if acc_q else float("nan")),
                     "final_loss": (loss_q[-1] if loss_q else float("nan")),
                     "final_accuracy_train": (acc_s[-1] if acc_s else float("nan")),
-                    "n_samples": run.get("n_support", 0) + run.get("n_query", 0),
-                    "n_support": run.get("n_support", 0),
-                    "n_query": run.get("n_query", 0),
+                    "n_samples": run.get("n_support") + run.get("n_query"),
+                    "n_support": run.get("n_support"),
+                    "n_query": run.get("n_query"),
                     **cv_cols,
                 }
             # pad back to n_epochs so the saved schema stays identical
@@ -630,7 +630,7 @@ class TestEngine:
 
             # build return dict (per-shot DataFrame indexed by repetition)
             for shots in shots_list:
-                shot_rows = per_shot_records_accumulator.get(shots, [])
+                shot_rows = per_shot_records_accumulator.get(shots)
                 if not shot_rows:
                     continue
                 shot_df = pd.DataFrame(shot_rows).set_index("repetition")
@@ -874,9 +874,9 @@ class TestEngine:
         with open(json_path, "r") as f:
             summary = json.load(f)
 
-        exp_name = summary.get("experiment_name", "")
-        shots_list = summary.get("shots_list", [])
-        agg = pd.DataFrame(summary.get("aggregated_results", []))
+        exp_name = summary.get("experiment_name")
+        shots_list = summary.get("shots_list")
+        agg = pd.DataFrame(summary.get("aggregated_results"))
 
         if agg.empty:
             raise ValueError("No aggregated_results found in the JSON.")

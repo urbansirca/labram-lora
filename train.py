@@ -364,7 +364,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         use_compile=opt_cfg.get("use_compile"),
         use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
-        wandb_project=exp_cfg.get("wandb_project", "EEG-FM"),
+        wandb_project=exp_cfg.get("wandb_project")),
         config_for_logging=config,
         save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints"),
         save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval"),

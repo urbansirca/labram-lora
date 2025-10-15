@@ -28,7 +28,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     opt_cfg = config.get("optimizations")
 
     # core exp settings
-    SEED = int(exp_cfg.get("seed", 111))
+    SEED = int(exp_cfg.get("seed"))
     META_ITERS = int(exp_cfg["meta_iterations"])
     OPTIMIZER = exp_cfg["optimizer"]
     SCHEDULER = exp_cfg["scheduler"]
@@ -200,13 +200,13 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
 
     def make_sup_scheduler(opt: torch.optim.Optimizer):
         if SUP_SCHED == "CosineAnnealingLR":
-            return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min", 0)))
+            return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=META_ITERS, eta_min=float(exp_cfg.get("eta_min")))
         elif SUP_SCHED == "CosineAnnealingWarmRestarts":
             return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 opt,
-                T_0=int(exp_cfg.get("T_0", 100)),
-                T_mult=int(exp_cfg.get("T_mult", 2)),
-                eta_min=float(exp_cfg.get("eta_min", 1e-5)),
+                T_0=int(exp_cfg.get("T_0")),
+                T_mult=int(exp_cfg.get("T_mult")),
+                eta_min=float(exp_cfg.get("eta_min")),
             )
         elif SUP_SCHED in (None, "None"):
             return None
@@ -268,7 +268,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         wandb_project=exp_cfg.get("wandb_project"),
         config_for_logging=config,
         save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints"),
-        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval", 10),
+        save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval"),
         save_best_checkpoints=exp_cfg.get("save_best_checkpoints"),
         save_final_checkpoint=exp_cfg.get("save_final_checkpoint"),
         checkpoint_dir=(Path(__file__).parent / "weights" / "checkpoints_meta" / experiment_name),
@@ -317,7 +317,7 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
         use_wandb=exp_cfg.get("log_to_wandb_test"),
         wandb_prefix="test",
         run_size=100,
-        save_dir=Path(config.get("test").get("save_dir_root", "results/test")) / model_str / experiment_name,
+        save_dir=Path(config.get("test").get("save_dir_root")) / model_str / experiment_name,
         head_only=hyperparameters.get("head_only_test"),
         test_lr=float(hyperparameters.get("test_lr")),
         test_wd=float(hyperparameters.get("test_wd")),
