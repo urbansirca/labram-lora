@@ -208,3 +208,6 @@ lomso/
 bug_fix/
 test_only_lomso/
 ng_testing/*.job
+
+
+*.job
