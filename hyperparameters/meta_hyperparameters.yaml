@@ -1,12 +1,12 @@
 experiment:
-  model: deepconvnet       # or "eegnet"
+  model: labram       # or "eegnet"
   device: cuda          # "cuda" | "cpu" | "mps"
   n_subjects: 54       # used if data.subjects not set
   seed: 111
-  meta_iterations: 700
+  meta_iterations: 400
   validate_every: 30
   optimizer: AdamW       # Adam | AdamW
-  scheduler: CosineAnnealingLR   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
+  scheduler: CosineAnnealingWarmRestarts   # CosineAnnealingLR | CosineAnnealingWarmRestarts | None
   # logging / checkpoints / early stopping
   log_to_wandb: true
   log_to_wandb_test: false
@@ -22,12 +22,12 @@ experiment:
   # optional warm restarts extras
   T_0: 100 
   T_mult: 2
-  eta_min: 1e-4
+  eta_min: 1e-6
 
 data:
   path: data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5
   subjects: #[1,2,3,4]   # optional; else n_subjects used
-  leave_out: [20, 39]             # explicit test subjects 
+  leave_out: [1,2,3,4,5,6]            # explicit test subjects 
   m_leave_out: #2 #                  # optional multi-LOO size
   train_proportion: 0.97
   n_channels: 62
@@ -38,14 +38,14 @@ data:
   electrodes:                     # optional; falls back to get_ku_dataset_channels()
 
 meta:
-  meta_batch_size: 25
-  k_support: 3
-  q_query: 100         # or null for “all remaining”
-  q_eval: 50
-  inner_steps: 2
-  inner_lr: 3e-5
+  meta_batch_size: 15
+  k_support: 5
+  q_query: 24         # or null for “all remaining”
+  q_eval: 24          # or null for “all remaining”
+  inner_steps: 3
+  inner_lr: 3e-4
   run_size: 100       # granularity for episode indexing
-  clip_grad_norm: 6  # torch.nn.utils.clip_grad_norm_
+  clip_grad_norm: 10.0  # torch.nn.utils.clip_grad_norm_
   val_episodes_per_subject: 1
 
 supervised:
@@ -108,11 +108,11 @@ deepconvnet:
   head_only_test: false 
   
 test:
-  n_epochs: 20
-  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25]  # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["deepconvnet"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
-  save_dir_root: "results_meta/lomso_2" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
+  n_epochs: 2
+  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 3  # number of repeats for few-shot learning (with different random samples each time)
+  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
+  save_dir_root: "results_meta/lomso_3" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 
 lomso:

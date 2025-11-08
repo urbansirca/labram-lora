@@ -23,12 +23,12 @@ def run_lomso(config_path: str, with_meta: bool = False, run_loso: bool = False)
     max_folds = base_cfg.get("lomso").get("max_folds")
     test_only = base_cfg.get("lomso").get("test_only")
 
-    if run_loso and test_only:
-        raise ValueError(
-            "Invalid configuration: '--run-loso' and 'test_only: true' cannot be used together.\n"
-            "LOMSO mode performs fold-based training/testing, whereas 'test_only' "
-            "disables training entirely."
-        )
+    # if run_loso and test_only:
+    #     raise ValueError(
+    #         "Invalid configuration: '--run-loso' and 'test_only: true' cannot be used together.\n"
+    #         "LOMSO mode performs fold-based training/testing, whereas 'test_only' "
+    #         "disables training entirely."
+    #     )
 
     # ---- subjects / folds ----------------------------------------------------
     subjects = build_subject_list(base_cfg)
@@ -113,9 +113,9 @@ def run_lomso(config_path: str, with_meta: bool = False, run_loso: bool = False)
             
             cfg.setdefault("experiment")["checkpoint_dir"] = str(dest)
 
-            if test_only and model_name in ["deepconvnet", "labram"] and not run_loso:
+            if test_only and model_name in ["deepconvnet", "labram"]:
                 # get checkpoint file from lomso_root
-                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type=ckpt_type, head_only=cfg.get("labram").get("head_only_train"))
+                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, is_loso=run_loso, type=ckpt_type, head_only=cfg.get("labram").get("head_only_train"))
                 if model_name == "deepconvnet":
                     cfg.setdefault("deepconvnet")["checkpoint_file"] = str(ckpt_file)
                 elif model_name == "labram":

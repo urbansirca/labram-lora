@@ -34,9 +34,14 @@ def load_labram(lora=True, peft_config=None):
             processed_state[key] = value
 
     # Create model and load processed weights
-    model = LaBraM.base_patch200_200(
-        num_classes=2
-    )  # TODO: not sure if the head should be initialized here or added on top of the model
+    if not lora:
+        model = LaBraM.base_patch200_200(
+            num_classes=2,
+        )  # TODO: not sure if the head should be initialized here or added on top of the model
+    else:
+        model = LaBraM.base_patch200_200(
+            num_classes=2,
+        )  # dropout handled by LoRA config
     missing_keys, unexpected_keys = model.load_state_dict(processed_state, strict=False)
 
     logger.info(f"Loaded {len(processed_state)} keys from checkpoint")

@@ -172,6 +172,8 @@ class MetaEngine(BaseEngine):
 
         # metrics
         self.metrics = Metrics()
+
+        self.inner_prox_lambda = 1e-3
         
 
     def _grad_norm(self, params) -> float:
@@ -223,6 +225,17 @@ class MetaEngine(BaseEngine):
             metric_str = f"{metric_val:.3f}" if metric_val is not None else "NA"
             name = f"checkpoint_i{self.metrics.iteration}_acc{metric_str}"
             self.checkpoint(name=name)
+    
+    def _prox_penalty(self, fast_params, base_params):
+        lam = float(getattr(self, "inner_prox_lambda"))
+        if lam <= 0.0:
+            return 0.0
+        # base is treated as a constant reference
+        denom = float(sum(p.numel() for p in fast_params)) or 1.0
+        pen = torch.zeros((), device=fast_params[0].device)
+        for f, b in zip(fast_params, base_params):
+            pen = pen + (f - b.detach()).pow(2).sum()
+        return lam * (pen / denom)
 
     def meta_step(self, subjects_batch: List[int]):
         self.model.eval()  # freeze BN running stats during meta-episode #TODO: check with professor
@@ -269,6 +282,7 @@ class MetaEngine(BaseEngine):
                     fast_dict[name] = param
                 logits_s = self._forward_with(fast_dict, Xs)
                 Ls = nn.functional.cross_entropy(logits_s, ys)
+                Ls = Ls + self._prox_penalty(fast, base_params) 
                 inner_losses.append(Ls.detach())
                 grads = torch.autograd.grad(
                     Ls, fast, create_graph=False, retain_graph=False, allow_unused=True
@@ -370,6 +384,7 @@ class MetaEngine(BaseEngine):
                     with torch.enable_grad():
                         logits_s = self._forward_with(fast_dict, Xs)
                         Ls = torch.nn.functional.cross_entropy(logits_s, ys)
+                        Ls = Ls + self._prox_penalty(fast, base_params)
                         grads = torch.autograd.grad(
                             Ls,
                             fast,

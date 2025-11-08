@@ -50,7 +50,7 @@ def load_best_checkpoint(folder: str):
     print(f"Best checkpoint: {best_ckpt_path.name} (acc={best_acc:.3f})")
     return best_ckpt_path, best_acc
 
-def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best", head_only=False):
+def get_checkpoint_file(root_dir, model_name,leave_out_subjs,  is_loso=False, type="best", head_only=False):
     """
     gets the checkpoint file for a given model and leave_out subjects for LOMSO. 
     type can be best or final
@@ -71,7 +71,14 @@ def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best", head
         if not experiment_dir.is_dir():
             continue
         # check if leave_out matches
-        if f"test{'-'.join(map(str, sorted(leave_out_subjs)))}" in experiment_dir.name:
+        if not is_loso:
+            check = f"test{'-'.join(map(str, sorted(leave_out_subjs)))}"
+        else:
+            check = f"test{leave_out_subjs}"
+        
+        print(check)
+        print(experiment_dir.name.split('_')[-1])
+        if check == experiment_dir.name.split('_')[-1]:
             print(f"Found experiment directory: {experiment_dir}")
             if model_name == "deepconvnet":
                 if type == "best":
@@ -82,8 +89,15 @@ def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best", head
                             ckpt_file, _ = load_best_checkpoint(experiment_dir)
                         except Exception as e:
                             raise ValueError(f"No best_val_checkpoint.pt or fallback found in {experiment_dir}: {e}")
-                elif type == "final":
+                elif type == "final" and not is_loso:
                     final_ckpt_files = list(experiment_dir.glob("final_checkpoint*.pt"))
+                    if not final_ckpt_files:
+                        raise ValueError(f"No final_checkpoint*.pt file found in {experiment_dir}")
+                    if len(final_ckpt_files) > 1:
+                        raise ValueError(f"Multiple final_checkpoint*.pt files found in {experiment_dir}")
+                    ckpt_file = final_ckpt_files[0]
+                elif type == "final" and is_loso:
+                    final_ckpt_files = list(experiment_dir.glob("FINAL*.pt"))
                     if not final_ckpt_files:
                         raise ValueError(f"No final_checkpoint*.pt file found in {experiment_dir}")
                     if len(final_ckpt_files) > 1:
@@ -97,9 +111,17 @@ def get_checkpoint_file(root_dir, model_name, leave_out_subjs, type="best", head
                             ckpt_file, _ = load_best_checkpoint(experiment_dir)
                         except Exception as e:
                             raise ValueError(f"No best_val_checkpoint directory or fallback found in {experiment_dir}: {e}")
-                elif type == "final":
+                elif type == "final" and not is_loso:
                     # find the subfolder that starts with final_checkpoint (there should be only one)
                     final_ckpt_dirs = [d for d in experiment_dir.iterdir() if d.is_dir() and d.name.startswith("final_checkpoint")]
+                    if not final_ckpt_dirs:
+                        raise ValueError(f"No final_checkpoint* directory found in {experiment_dir}")
+                    if len(final_ckpt_dirs) > 1:
+                        raise ValueError(f"Multiple final_checkpoint* directories found in {experiment_dir}")
+                    ckpt_file = final_ckpt_dirs[0]
+                elif type == "final" and is_loso:
+                    # find the subfolder that starts with final_checkpoint (there should be only one)
+                    final_ckpt_dirs = [d for d in experiment_dir.iterdir() if d.is_dir() and d.name.startswith("FINAL")]
                     if not final_ckpt_dirs:
                         raise ValueError(f"No final_checkpoint* directory found in {experiment_dir}")
                     if len(final_ckpt_dirs) > 1:

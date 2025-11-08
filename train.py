@@ -15,6 +15,7 @@ from engines import TestEngine
 from preprocessing.preprocess_KU_data import get_ku_dataset_channels, get_dreyer_dataset_channels, get_nikki_dataset_channels
 
 
+from meta_train import set_partial_finetune_labram
 # ---------------- logging ----------------
 logging.basicConfig(
     level=logging.INFO,
@@ -76,6 +77,9 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 model = load_labram_with_adapter(
                     hyperparameters["adapter_checkpoint_dir"]
                 )
+        
+            if hyperparameters.get("lora") == False:
+                set_partial_finetune_labram(model, mode="last_k", k=8)
             
             if hyperparameters["head_only_train"]:
                 model = freeze_all_but_head_labram(model)
@@ -315,7 +319,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             else:
                 raise ValueError(f"Unsupported optimizer: {OPTIMIZER}")
 
-
     def make_scheduler(optimizer: torch.optim.Optimizer):
         if SCHEDULER == "CosineAnnealingLR":
             return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=N_EPOCHS)
@@ -364,7 +367,7 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         use_compile=opt_cfg.get("use_compile"),
         use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
-        wandb_project=exp_cfg.get("wandb_project")),
+        wandb_project=exp_cfg.get("wandb_project"),
         config_for_logging=config,
         save_regular_checkpoints=exp_cfg.get("save_regular_checkpoints"),
         save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval"),
@@ -394,15 +397,17 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     if not with_tester:
         return engine, None
     
-    
+    test_cfg = config.get("test")
+    save_root = Path(test_cfg.get("save_dir_root", "results/test"))  # ensure Path
+    save_dir = save_root / model_str / experiment_name
     tester = TestEngine(
         engine=engine,
         test_ds=test_ds,
         use_wandb=exp_cfg.get("log_to_wandb_test"),
         wandb_prefix="test",
         run_size=100,
-        save_dir=exp_cfg.get("test").get("save_dir_root", Path("results/test")) / model_str / experiment_name,
-        head_only=hyperparameters.get("head_only_test"),
+        save_dir=save_dir,
+        head_only=hyperparameters.get("head_only_test", False),
         test_lr=hyperparameters.get("test_lr"),
         test_wd=hyperparameters.get("test_wd"),
     )

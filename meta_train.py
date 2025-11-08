@@ -97,7 +97,7 @@ def set_partial_finetune_labram(model, mode="last_k", k=8, verbose=True):
             by_prefix[n.split('.')[0]] += p.numel()
     print("\nBy top-level prefix (trainable):")
     for pref, cnt in sorted(by_prefix.items(), key=lambda x: -x[1]):
-        print(f"  {pref:<20} → {cnt/1e6:.2f} M")
+        print(f"  {pref:<20} → {cnt:,d} parameters")
     print("-------------------------------------------------\n")
 
 def get_meta_engine(config, with_tester = False, experiment_name = None, model= None, model_str= None, model_hyperparameters = None):
@@ -135,6 +135,8 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
             model = load_labram_with_adapter(
                 hyperparameters.get("adapter_checkpoint_dir")
             )
+
+        # set_partial_finetune_labram(model, mode="last_k", k=8)
         
     elif model_name == "deepconvnet":
         model_str = "deepconvnet"
@@ -316,8 +318,6 @@ def get_meta_engine(config, with_tester = False, experiment_name = None, model= 
     meta_iters_per_meta_epoch = int(supervised_cfg.get("meta_iters_per_meta_epoch"))
     supervised_train_batch_size = int(supervised_cfg.get("train_batch_size"))
     supervised_eval_batch_size = int(supervised_cfg.get("eval_batch_size"))
-
-    set_partial_finetune_labram(model, mode="last_k", k=8)
 
     # warm up lazy bits (esp. labram)
     model = model.to(DEVICE)

@@ -1,7 +1,7 @@
 # go over data/preprocessed files and give me dimensions of one instance
 import h5py
 
-path = "data/preprocessed/"
+path = "/home/usirca/workspace/labram-lora/data/preprocessed/ng"
 
 #list all .h5 files in that directory
 

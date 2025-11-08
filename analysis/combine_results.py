@@ -1,8 +1,8 @@
 import pandas as pd
 import pathlib
 
-root_dir = pathlib.Path("ng_testing/raw_dataset")
-models = [""]
+root_dir = pathlib.Path("/home/usirca/workspace/labram-lora/test_only_lomso_new/reduced-lr-labram-lora-40-isti")
+models = ["labram"]
 
 
 # loop over models and folds, collect results
@@ -18,7 +18,7 @@ for model in models:
             print(f"Warning: {results_file} does not exist, skipping.")
             continue
         df = pd.read_csv(results_file)
-        df["model"] = "deepconvnet_alt_raw"
+        df["model"] = f"{model}"
         df["experiment"] = experiment_dir.name
         all_results.append(df)
         
