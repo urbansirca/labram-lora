@@ -1,29 +1,26 @@
 import pandas as pd
-import pathlib
+from pathlib import Path
 
-root_dir = pathlib.Path("/home/usirca/workspace/labram-lora/test_only_lomso_new/reduced-lr-labram-lora-40-isti")
-models = ["labram"]
+root_dir = Path("..") / "LOSO_TEST"
+models = ["labram-lora","labram-partialft","deepconvnet"]
 
 
 # loop over models and folds, collect results
-all_results = []
+combined_results = []
 for model in models:
-    model_dir = pathlib.Path(root_dir) / model
+    model_dir = Path(root_dir) / model
     for experiment_dir in model_dir.iterdir():
         if not experiment_dir.is_dir():
-            continue
-        results_file = experiment_dir / "repetition_results.csv"
-        print(results_file)
+            raise StopIteration
+        results_file = experiment_dir / "TEST_RESULTS/repetition_results.csv"
         if not results_file.exists():
-            print(f"Warning: {results_file} does not exist, skipping.")
-            continue
+            raise StopIteration
         df = pd.read_csv(results_file)
         df["model"] = f"{model}"
         df["experiment"] = experiment_dir.name
-        all_results.append(df)
+        combined_results.append(df)
         
-# concatenate all results into one dataframe and save
-if all_results:
-    all_results_df = pd.concat(all_results, ignore_index=True)
-    all_results_df.to_csv(pathlib.Path(root_dir) / "all_results.csv", index=False)
-    print(f"Saved all results to {pathlib.Path(root_dir) / 'all_results.csv'}")
+if combined_results:
+    combined_results_df = pd.concat(combined_results, ignore_index=True)
+    combined_results_df.to_csv("COMBINED_RESULTS.csv", index=False)
+    print(f"Saved all results to {'COMBINED_RESULTS.csv'}")

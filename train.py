@@ -98,14 +98,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_engine(config, experiment_name = None, model = None, model_str = None, model_hyperparameters = None):
-    # ---------------- config -----------------
-
-
+def get_engine(config, experiment_name = None):
+    # ---------------- configs -----------------
     exp_cfg = config.get("experiment")
     data_cfg = config.get("data")
-    samp_cfg = config.get("sampler")
-    opt_cfg = config.get("optimizations")
 
     # core exp settings
     SEED = exp_cfg["seed"]
@@ -114,11 +110,11 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
     SCHEDULER = exp_cfg["scheduler"]
 
     # optimizations
-    NUM_WORKERS = opt_cfg.get("num_workers")
-    PIN_MEMORY = opt_cfg.get("pin_memory")
-    PERSISTENT_WORKERS = opt_cfg.get("persistent_workers")
-    NON_BLOCKING = opt_cfg.get("non_blocking")
-    USE_AMP = opt_cfg.get("use_amp")
+    NUM_WORKERS = 8
+    PIN_MEMORY = True
+    PERSISTENT_WORKERS = True
+    NON_BLOCKING = True
+    USE_AMP = False
 
     electrodes = data_cfg.get("electrodes")
     if electrodes is None and "ku" in data_cfg.get("path").lower():
@@ -129,41 +125,32 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
 
     # ---------------- model ------------------
     model_name = exp_cfg["model"].lower()
-    if model is None:
-        if model_name == "labram":
-            model_str = "labram"
-            hyperparameters = config["labram"]
-            if hyperparameters["adapter_checkpoint_dir"] is None:
-                model = load_labram(
-                    lora=hyperparameters["lora"],
-                    peft_config=config["peft_config"],
-                )
-            else:
-                model = load_labram_with_adapter(
-                    hyperparameters["adapter_checkpoint_dir"]
-                )
-            if hyperparameters.get("lora") == False:
-                set_partial_finetune_labram(model, mode="last_k", k=8)
-            
-        elif model_name == "deepconvnet":
-            hyperparameters = config.get("deepconvnet")
-            model_str = "deepconvnet"
-            model = DeepConvNet(
-                    in_chans=data_cfg.get("input_channels"),
-                    n_classes=data_cfg.get("num_classes"),
-                    input_time_length=data_cfg.get("samples"),
-                    final_conv_length="auto",
-                )
+    if model_name == "labram":
+        model_str = "labram"
+        hyperparameters = config["labram"]
+        if hyperparameters["adapter_checkpoint_dir"] is None:
+            model = load_labram(
+                lora=hyperparameters["lora"],
+                peft_config=config["peft_config"],
+            )
         else:
-            raise ValueError("Invalid model")
-
-        logger.info(f"HYPERPARAMETERS for {model_name}: {hyperparameters}")
-    
-    else:   
-        model = model
-        model_str = model_str
-        hyperparameters = model_hyperparameters
-        logger.info(f"USING PROVIDED MODEL: {model_str}")
+            model = load_labram_with_adapter(
+                hyperparameters["adapter_checkpoint_dir"]
+            )
+        if hyperparameters.get("lora") == False:
+            set_partial_finetune_labram(model, mode="last_k", k=8)
+        
+    elif model_name == "deepconvnet":
+        hyperparameters = config.get("deepconvnet")
+        model_str = "deepconvnet"
+        model = DeepConvNet(
+                in_chans=data_cfg.get("input_channels"),
+                n_classes=data_cfg.get("num_classes"),
+                input_time_length=data_cfg.get("samples"),
+                final_conv_length="auto",
+            )
+    else:
+        raise ValueError("Invalid model")
 
 
 
@@ -221,10 +208,8 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
 
 
     # ---------------- loaders ----------------
-    TRAIN_BS = samp_cfg.get("train_batch_size")
-    EVAL_BS = samp_cfg.get("eval_batch_size")
-    DROP_LAST = samp_cfg.get("drop_last")
-
+    TRAIN_BS = 250
+    EVAL_BS = 250
     g_train = torch.Generator().manual_seed(SEED)
 
     train_loader = DataLoader(
@@ -233,7 +218,7 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
         shuffle=True,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
-        drop_last=DROP_LAST,
+        drop_last=False,
         generator=g_train,
         persistent_workers=PERSISTENT_WORKERS,
     )
@@ -256,12 +241,12 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
         persistent_workers=PERSISTENT_WORKERS,
     )
     train_after_stopping_loader = DataLoader(
-        train_ds,
+        train_after_stopping_ds,
         batch_size=TRAIN_BS,
         shuffle=True,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
-        drop_last=DROP_LAST,
+        drop_last=False,
         generator=g_train,
         persistent_workers=PERSISTENT_WORKERS,
     )
@@ -352,7 +337,7 @@ def get_engine(config, experiment_name = None, model = None, model_str = None, m
         non_blocking=NON_BLOCKING,
         pin_memory=PIN_MEMORY,
         use_amp=USE_AMP,
-        use_compile=opt_cfg.get("use_compile"),
+        use_compile=False,
         use_wandb=exp_cfg.get("log_to_wandb"),
         wandb_entity="urban-sirca-vrije-universiteit-amsterdam",
         wandb_project=exp_cfg.get("wandb_project"),

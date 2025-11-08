@@ -335,7 +335,7 @@ class TestEngine:
 
             row = {
                     "subject_id": subject_id,
-                    "shots": n_shots,
+                    "shots": n_shots*2, # total shots across classes
                     "repetition": rep,
                     "final_accuracy": (acc_q[-1] if acc_q else float("nan")),
                     "final_loss": (loss_q[-1] if loss_q else float("nan")),

@@ -27,14 +27,6 @@ experiment:
   train_after_stopping: true # if true, will train the model after early stopping
   train_after_stopping_epochs: 2
 
-optimizations:
-  non_blocking: true
-  pin_memory: true
-  persistent_workers: true
-  num_workers: 8 # if persistent_workers is true, then num_workers should be greater than 0
-  use_amp: false # use automatic mixed precision - TURNING ON PREVENTS CONVERGENCE
-  use_compile: false # use torch.compile
-
 # KU
 data:
   path: "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
@@ -51,11 +43,6 @@ data:
   patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
   trial_length: 800 # length of the trial in samples
   fs: 200 # sampling frequency (downsampled from 1000 Hz)
-
-sampler:
-  train_batch_size: 250
-  eval_batch_size: 250
-  drop_last: false
 
 labram:
   lr: 0.002
@@ -79,8 +66,8 @@ peft_config:
   target_modules: ["proj","qkv","fc1"]
 
 test:
-  n_epochs: 3
-  shots: [0, 1, 2]
+  n_epochs: 10
+  shots: [0, 1, 2, 4] # number of shots per class
   n_repeats: 2
   model: "deepconvnet"
   model_folder_name: "deepconvnet" # folder name where model is saved
