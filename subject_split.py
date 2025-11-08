@@ -82,10 +82,6 @@ class KUTrialDataset(Dataset):
 
             X_shape = first_grp["X"].shape
             Y_shape = first_grp["Y"].shape
-            print(f"Detected shape per subject: X={X_shape}, Y={Y_shape}")
-            print(
-                f"Assuming all {len(self.subject_ids)} subjects have {n_trials_per_subject} trials each"
-            )
             
             # print shapes for all subjects and check consistency
             inconsistent = []

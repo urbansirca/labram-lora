@@ -11,7 +11,7 @@ experiment:
   log_to_wandb: true
   log_to_wandb_test: false
   wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
-  n_subjects: 54 # 54 / 55 / 87
+  n_subjects: 6 # 54 / 55 / 87
   checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
 
   save_regular_checkpoints: false
@@ -26,7 +26,7 @@ experiment:
 
   epochs: 1
   train_after_stopping: true # if true, will train the model after early stopping
-  train_after_stopping_epochs: 30
+  train_after_stopping_epochs: 2
 
 optimizations:
   non_blocking: true
@@ -35,7 +35,6 @@ optimizations:
   num_workers: 8 # if persistent_workers is true, then num_workers should be greater than 0
   use_amp: false # use automatic mixed precision - TURNING ON PREVENTS CONVERGENCE
   use_compile: false # use torch.compile
-
 
 # KU
 data:
@@ -53,42 +52,6 @@ data:
   patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
   trial_length: 800 # length of the trial in samples
   fs: 200 # sampling frequency (downsampled from 1000 Hz)
-
-# DREYER
-# data:
-#   path: /home/usirca/workspace/labram-lora/data/preprocessed/dreyer/ABC_labram_preprocessed_trial_norm.h5 # "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5"      # <-- set this
-#   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
-#   # choose exactly one of the two lines below:
-#   leave_out: [20, 39]             # explicit test subjects 
-#   m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
-#   train_proportion: 0.9   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
-#   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
-#   num_classes: 2 
-#   input_channels: 27
-#   samples: 1000 # 800 for eegnet
-#   n_patches_labram: 5 # number of patches in the labram model
-#   patch_length: 200 # length of the patch in samples (trial_length / n_patches_labram)
-#   trial_length: 1000 # length of the trial in samples
-#   fs: 200 # sampling frequency (downsampled from 1000 Hz)
-
-
-
-# # NIKKI
-# data:
-#   path: /home/usirca/workspace/labram-lora/data/preprocessed/nikki/NIKKI_dataset.h5 
-#   electrodes: null               # if null/omitted, will use get_ku_dataset_channels()
-#   # choose exactly one of the two lines below:
-#   leave_out: [20, 39]             # explicit test subjects 
-#   m_leave_out: #2 #                  # OR: number of subjects to leave out at random, set to null for lomso
-#   train_proportion: 0.9   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
-#   subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
-#   num_classes: 2 
-#   input_channels: 16
-#   samples: 1250 #  for eegnet
-#   n_patches_labram: null # number of patches in the labram model
-#   patch_length: null # length of the patch in samples (trial_length / n_patches_labram)
-#   trial_length: 1250 # length of the trial in samples
-#   fs: 250 # sampling frequency (downsampled from 1000 Hz)
 
 sampler:
   train_batch_size: 250
@@ -125,22 +88,16 @@ peft_config:
 
 
 test:
-  n_epochs: 40
-  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
-  models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
-  save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
+  n_epochs: 3
+  shots: [0, 1, 2] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
+  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
+  model: "labram"
+  save_dir_root: "RESULTS_TEST/lomso_test" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 lomso:
-  test_only: true # if true, will only run testing without training
-
-  # this will build the folowing paths: <train_root/test_root>/<test_root>/<subdir>/
-  train_root: "runtime_test"                    # when test_only = false 
-  test_root: "test_only_lomso_new"           # when test_only = true
-  subdir: "reduced-lr-labram-lora-40-isti"             # optional, appended to the root
-
-  checkpoint_root: "/home/usirca/workspace/labram-lora/lomso/individual-subject"  # where trained ckpts live (used only if test_only)
-  type: "final"                           # "best" | "final"
+  # this will build the folowing paths: <train_root>/<subdir>/
+  train_root: "TEST"                    # when test_only = false 
+  subdir: "TEST_SUBDIR"             # optional, appended to the root
 
   use_cv_epoch_selection: false
   cv_min_shots: 6 

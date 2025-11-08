@@ -255,10 +255,10 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     logger.info(f"Test subjects:  {sm.S_test}")
 
     # ---- datasets ----
-    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train, select_mirepnet_45=(model_str=="mirepnet"))
-    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val, select_mirepnet_45=(model_str=="mirepnet"))
-    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test, select_mirepnet_45=(model_str=="mirepnet"))
-    train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val, select_mirepnet_45=(model_str=="mirepnet"))
+    train_ds = KUTrialDataset(DATASET_PATH, sm.S_train)
+    val_ds = KUTrialDataset(DATASET_PATH, sm.S_val)
+    test_ds = KUTrialDataset(DATASET_PATH, sm.S_test)
+    train_after_stopping_ds = KUTrialDataset(DATASET_PATH, sm.S_train + sm.S_val)
 
 
     # ---------------- loaders ----------------
