@@ -3,17 +3,15 @@ import logging
 from datetime import datetime
 from pathlib import Path
 import re
-import yaml
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy
 
 from engines import Engine
-from models import load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
+from models import load_labram, DeepConvNet, load_labram_with_adapter
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
-from engines import TestEngine
-from preprocessing.preprocess_KU_data import get_ku_dataset_channels, get_dreyer_dataset_channels, get_nikki_dataset_channels
+from preprocessing.preprocess_KU_data import get_ku_dataset_channels
 
 
 def set_partial_finetune_labram(model, mode="last_k", k=8, verbose=True):
@@ -100,7 +98,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_engine(config, with_tester = False, experiment_name = None, model = None, model_str = None, model_hyperparameters = None):
+def get_engine(config, experiment_name = None, model = None, model_str = None, model_hyperparameters = None):
     # ---------------- config -----------------
 
 
@@ -144,12 +142,9 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                 model = load_labram_with_adapter(
                     hyperparameters["adapter_checkpoint_dir"]
                 )
-        
             if hyperparameters.get("lora") == False:
                 set_partial_finetune_labram(model, mode="last_k", k=8)
             
-            if hyperparameters["head_only_train"]:
-                model = freeze_all_but_head_labram(model)
         elif model_name == "deepconvnet":
             hyperparameters = config.get("deepconvnet")
             model_str = "deepconvnet"
@@ -159,42 +154,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
                     input_time_length=data_cfg.get("samples"),
                     final_conv_length="auto",
                 )
-            print("MODEL",model)
-            if hyperparameters["checkpoint_file"] is not None:
-                try:
-                    state_dict = torch.load(hyperparameters["checkpoint_file"], map_location="cpu")
-                    model.load_state_dict(state_dict)
-                    logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']}")
-                except Exception as e:
-                    # Handle NG models
-                    model = DeepConvNet(
-                        in_chans=data_cfg.get("input_channels"),
-                        n_classes=data_cfg.get("num_classes"),
-                        input_time_length=1000,
-                        final_conv_length="auto",
-                    )
-                    torch.serialization.add_safe_globals([numpy.core.multiarray.scalar])
-                    torch.serialization.safe_globals([numpy.core.multiarray.scalar])
-                    checkpoint = torch.load(hyperparameters["checkpoint_file"], map_location="cpu", weights_only=False)
-
-                    # Extract the checkpoint state dictionary
-                    checkpoint_state_dict = checkpoint["model_state_dict"]
-
-                    # Add the "model." prefix to all keys
-                    checkpoint_state_dict_renamed = {
-                        f"model.{key}" if not key.startswith("model.") else key: value
-                        for key, value in checkpoint_state_dict.items()
-                    }
-
-                    # Load the renamed state dict into the model
-                    model.load_state_dict(checkpoint_state_dict_renamed)
-                    logger.info(f"LOADED DEEPCONVNET FROM {hyperparameters['checkpoint_file']} with model_state_dict")
-
-
-                
-            if hyperparameters["head_only_train"]:
-                assert hyperparameters["checkpoint_file"] is not None, "When using head_only_train, a checkpoint_file must be specified to load the pretrained weights from."
-                model = freeze_all_but_head_deepconvnet(model)
         else:
             raise ValueError("Invalid model")
 
@@ -265,8 +224,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     TRAIN_BS = samp_cfg.get("train_batch_size")
     EVAL_BS = samp_cfg.get("eval_batch_size")
     DROP_LAST = samp_cfg.get("drop_last")
-    SHUF_SUBJ = samp_cfg.get("shuffle_subjects")
-    SHUF_TRIALS = samp_cfg.get("shuffle_trials")
 
     g_train = torch.Generator().manual_seed(SEED)
 
@@ -425,35 +382,4 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         train_after_stopping_epochs=exp_cfg.get("train_after_stopping_epochs"),
     )
 
-    if not with_tester:
-        return engine, None
-    
-    test_cfg = config.get("test")
-    save_root = Path(test_cfg.get("save_dir_root", "results/test"))  # ensure Path
-    save_dir = save_root / model_str / experiment_name
-    tester = TestEngine(
-        engine=engine,
-        test_ds=test_ds,
-        use_wandb=exp_cfg.get("log_to_wandb_test"),
-        wandb_prefix="test",
-        run_size=100,
-        save_dir=save_dir,
-        head_only=hyperparameters.get("head_only_test", False),
-        test_lr=hyperparameters.get("test_lr"),
-        test_wd=hyperparameters.get("test_wd"),
-    )
-    return engine, tester
-
-    # ---------------- run --------------------
-if __name__ == "__main__":
-    with open("hyperparameters/hyperparameters.yaml", "r") as f:
-        config = yaml.safe_load(f)
- 
-    engine, tester = get_engine(config, with_tester=True)
-    engine.train()
-
-    all_results = tester.test_all_subjects(
-            shots_list= config.get("test").get("shots"),
-            n_epochs= config.get("test").get("n_epochs"),
-            n_repeats=config.get("test").get("n_repeats"),
-        )
+    return engine

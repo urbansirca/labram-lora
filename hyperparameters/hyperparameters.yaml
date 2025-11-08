@@ -9,7 +9,6 @@ experiment:
   T_mult: 2 # CosineAnnealingWarmRestarts hyperparameter
   device: "cuda"
   log_to_wandb: true
-  log_to_wandb_test: false
   wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
   n_subjects: 6 # 54 / 55 / 87
   checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
@@ -44,7 +43,7 @@ data:
   leave_out: #[20]             # explicit test subjects 
   m_leave_out: null #                  # OR: number of subjects to leave out at random, set to null for lomso
   train_proportion: 0.97   #adds up to 2 val subjs      # share of train_pool that goes to TRAIN (rest is VAL)
-  subjects: null                  # if null/omitted, will use experiment.subjects_ids_list
+  subjects: null
   num_classes: 2 
   input_channels: 62
   samples: 800 # 800 for eegnet
@@ -57,8 +56,6 @@ sampler:
   train_batch_size: 250
   eval_batch_size: 250
   drop_last: false
-  shuffle_subjects: true
-  shuffle_trials: true
 
 labram:
   lr: 0.002
@@ -68,17 +65,12 @@ labram:
   adapter_checkpoint_dir: null
   test_lr: 0.00001
   test_wd: 0.002
-  head_only_train: false # if true, will only train the classification head during few-shot learning
-  head_only_test: false # if true, will only fine-tune the classification head during
 
 deepconvnet:
   lr: 0.001
   weight_decay: 0.0001
-  checkpoint_file: null # if not null, will load model from this checkpoint
   test_lr: 0.0001
   test_wd: 0.001
-  head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
-  head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
 
 peft_config:
   r: 2
@@ -86,18 +78,9 @@ peft_config:
   lora_dropout: 0.5
   target_modules: ["proj","qkv","fc1"]
 
-
 test:
   n_epochs: 3
-  shots: [0, 1, 2] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
-  model: "labram"
-  save_dir_root: "RESULTS_TEST/lomso_test" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
-
-lomso:
-  # this will build the folowing paths: <train_root>/<subdir>/
-  train_root: "TEST"                    # when test_only = false 
-  subdir: "TEST_SUBDIR"             # optional, appended to the root
-
-  use_cv_epoch_selection: false
-  cv_min_shots: 6 
+  shots: [0, 1, 2]
+  n_repeats: 2
+  model: "deepconvnet"
+  model_folder_name: "deepconvnet" # folder name where model is saved

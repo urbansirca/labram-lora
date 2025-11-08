@@ -296,27 +296,3 @@ def _squeeze_final_output(x):
 def _transpose_time_to_spat(x):
     return x.permute(0, 3, 2, 1)
 
-
-
-def freeze_all_but_head_deepconvnet(model):
-    """
-    Freezes all parameters in the model except for the classification head (conv_classifier).
-    This function assumes the classification head is named 'conv_classifier' as in the provided DeepConvNet.
-    """
-    # print all parameters
-    # print("model", model)
-    # Freeze all parameters
-    for param in model.parameters():
-        param.requires_grad = False
-
-    # Check if 'conv_classifier' exists inside the 'model' (which is a Sequential container)
-    if hasattr(model.model, 'conv_classifier'):
-        # Unfreeze the classification head (conv_classifier)
-        for param in model.model.conv_classifier.parameters():
-            param.requires_grad = True
-    else:
-        raise AttributeError("Model does not have 'conv_classifier' as a head. Please check the model architecture.")
-
-    print("Number of parameters after freezing:", sum(p.numel() for p in model.parameters() if p.requires_grad), " out of ", sum(p.numel() for p in model.parameters()))
-    model.train()
-    return model
