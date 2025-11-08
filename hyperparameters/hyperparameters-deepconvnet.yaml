@@ -10,7 +10,7 @@ experiment:
   device: "cuda"
   log_to_wandb: true
   wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
-  n_subjects: 6 # 54 / 55 / 87
+  n_subjects: 54 # 54 / 55 / 87
   checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
 
   save_regular_checkpoints: false
@@ -25,7 +25,7 @@ experiment:
 
   epochs: 1
   train_after_stopping: true # if true, will train the model after early stopping
-  train_after_stopping_epochs: 2
+  train_after_stopping_epochs: 30
 
 # KU
 data:

@@ -12,7 +12,7 @@ for model in models:
     for experiment_dir in model_dir.iterdir():
         if not experiment_dir.is_dir():
             raise StopIteration
-        results_file = experiment_dir / "TEST_RESULTS/repetition_results.csv"
+        results_file = experiment_dir / "test_results/repetition_results.csv"
         if not results_file.exists():
             raise StopIteration
         df = pd.read_csv(results_file)
@@ -22,5 +22,5 @@ for model in models:
         
 if combined_results:
     combined_results_df = pd.concat(combined_results, ignore_index=True)
-    combined_results_df.to_csv("COMBINED_RESULTS.csv", index=False)
-    print(f"Saved all results to {'COMBINED_RESULTS.csv'}")
+    combined_results_df.to_csv("combined_results.csv", index=False)
+    print(f"Saved all results to {'combined_results.csv'}")

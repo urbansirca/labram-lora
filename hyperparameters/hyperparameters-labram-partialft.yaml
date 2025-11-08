@@ -1,6 +1,6 @@
 experiment:
   name: null 
-  model: "deepconvnet"
+  model: "labram"
   seed: 111
   dataset: "KU"
   optimizer: "AdamW"
@@ -10,7 +10,7 @@ experiment:
   device: "cuda"
   log_to_wandb: true
   wandb_project: "EEG-FM" #"lomso-experiments" # lomso-experiments
-  n_subjects: 6 # 54 / 55 / 87
+  n_subjects: 54 # 54 / 55 / 87
   checkpoint_dir: null # keep null, run_lomso will set it, otherwise it defaults to weights/checkpoints/<experiment_name>
 
   save_regular_checkpoints: false
@@ -23,7 +23,7 @@ experiment:
   early_stopping_delta: 0.001
 
 
-  epochs: 1
+  epochs: 9
   train_after_stopping: true # if true, will train the model after early stopping
   train_after_stopping_epochs: 2
 
@@ -45,13 +45,13 @@ data:
   fs: 200 # sampling frequency (downsampled from 1000 Hz)
 
 labram:
-  lr: 0.002
-  weight_decay: 0.002
+  lr: 0.00005
+  weight_decay: 0.05
   dropout: null # 0.1 # dropout only when lora is false
   lora: false
   adapter_checkpoint_dir: null
   test_lr: 0.00001
-  test_wd: 0.002
+  test_wd: 0.05
 
 deepconvnet:
   lr: 0.001
@@ -69,5 +69,5 @@ test:
   n_epochs: 20
   shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots per class
   n_repeats: 10
-  model: "deepconvnet"
-  model_folder_name: "deepconvnet" # folder name where model is saved
+  model: "labram"
+  model_folder_name: "labram-partialft" # folder name where model is saved
