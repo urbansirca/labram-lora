@@ -1,11 +1,12 @@
 import copy
-import random
 import logging
+import random
 from pathlib import Path
 
 import yaml
 
 from train import get_engine
+from .testing_utils import build_subject_list, get_checkpoint_file
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -13,46 +14,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-from .testing_utils import build_subject_list, get_checkpoint_file
-
-def run_lomso(config_path: str, run_loso: bool = False):
+def run_loso(config_path: str):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
-    max_folds = base_cfg.get("lomso").get("max_folds")
     test_only = base_cfg.get("lomso").get("test_only")
 
     # ---- subjects / folds ----------------------------------------------------
     subjects = build_subject_list(base_cfg)
+    folds = subjects
 
-
-    # Build folds so that each subject is in test exactly once and in val exactly once.
-    # Approach: shuffle subjects deterministically using config seed (if present),
-    # pair adjacent subjects into M pairs, then for i in 0..M-1 create fold with
-    # test = pair[i], val = pair[(i+1) mod M]. This yields exactly M folds and each
-    # subject appears in test once and val once.
-    if not run_loso:
-
-        exp_seed = base_cfg.get("experiment").get("seed")
-        rng = random.Random(exp_seed) if exp_seed is not None else random.Random()
-
-        if len(subjects) % 2 != 0:
-            raise ValueError("Number of subjects must be even for pairwise LOMSO folding")
-
-        shuffled = subjects.copy()
-        rng.shuffle(shuffled)
-        pairs = [tuple(shuffled[i : i + 2]) for i in range(0, len(shuffled), 2)]
-
-        # For LOMSO we only specify test pairs here; validation will be handled
-        # by the SplitManager inside get_engine using train_proportion from config.
-        folds = [tuple(sorted(p)) for p in pairs]
-    else:
-        folds = subjects
-    if max_folds is not None:
-        folds = folds[:max_folds]
-
-    logger.info(f"Built {len(folds)} test folds (pairwise), max_folds={max_folds}")
-    logger.info(f"Test pairs: {folds}")
     
     # ---- testing params ------------------------------------------------------
     shots_list = base_cfg.get("test").get("shots")
@@ -74,7 +45,7 @@ def run_lomso(config_path: str, run_loso: bool = False):
     lomso_root.mkdir(parents=True, exist_ok=True)
 
     for model_name in models:
-        logger.info(f"Running LOMSO for model: {model_name}")
+        logger.info(f"Running LOSO for model: {model_name}")
         
         
         for fold_idx, test_pair in enumerate(folds, start=1):
@@ -85,16 +56,11 @@ def run_lomso(config_path: str, run_loso: bool = False):
             cfg.setdefault("experiment")["model"] = model_name
 
             # Configure leave_out to be the test subjects (SplitManager uses this as S_test)
-            if run_loso:
-                cfg.setdefault("data")["leave_out"] = [test_pair]
-            else:
-                cfg.setdefault("data")["leave_out"] = list(test_pair)
+            cfg.setdefault("data")["leave_out"] = [test_pair]
+
     
             # set experiment name so checkpoints are separated per-fold
-            if run_loso:
-                experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{test_pair}"
-            else:
-                experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{'-'.join(map(str,test_pair))}"
+            experiment_name = f"{model_name}_lomso_fold{fold_idx:03d}_test{test_pair}"
             
             model_folder = model_name
             if model_name == "labram" and cfg.get("labram").get("head_only_train") == True:
@@ -107,7 +73,7 @@ def run_lomso(config_path: str, run_loso: bool = False):
 
             if test_only and model_name in ["deepconvnet", "labram"]:
                 # get checkpoint file from lomso_root
-                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, is_loso=run_loso, type=ckpt_type, head_only=cfg.get("labram").get("head_only_train"))
+                ckpt_file = get_checkpoint_file(checkpoint_root, model_name, test_pair, type=ckpt_type, head_only=cfg.get("labram").get("head_only_train"))
                 if model_name == "deepconvnet":
                     cfg.setdefault("deepconvnet")["checkpoint_file"] = str(ckpt_file)
                 elif model_name == "labram":
@@ -146,13 +112,13 @@ def run_lomso(config_path: str, run_loso: bool = False):
                 "results_dir": str(tester.save_dir)
             }
 
-            # finish engine (closes wandb run, writes final_metrics) and free resources
+            # finish engine and free resources
             try:
                 engine.finish()
             except Exception:
                 logger.exception("engine.finish() failed")
 
-            # free memory explicitly (helps when running many folds sequentially)
+            # free memory explicitly
             try:
                 import gc
                 import torch as _torch

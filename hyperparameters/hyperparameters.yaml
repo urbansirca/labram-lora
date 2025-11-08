@@ -117,49 +117,21 @@ deepconvnet:
   head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
   head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
 
-mirepnet:
-  lr: 0.01
-  weight_decay: 0.0001
-  checkpoint_file: null # if not null, will load model from this checkpoint
-  test_lr: 0.0001
-  test_wd: 0.001
-  head_only_train: false # if true, will only train the classification head during few-shot learning, would only make sense if you have a pretrained model
-  head_only_test: false # if true, will only fine-tune the classification head during few-shot learning
-  use_lora: false
-  adapter_checkpoint_dir: null # if not null, will load adapter weights from this checkpoint
-
-
-peft_config: # Roomier budget (≈1–2% trainable, often best trade-off)
+peft_config:
   r: 2
   lora_alpha: 8
   lora_dropout: 0.5
-  target_modules: [   # ignored for mirepnet
-    "proj",
-    "qkv",
-    "fc1"
-  ]
-
-eegnet:
-  lr: 0.001
-  weight_decay: 0.02
-  test_lr: 0.00001
-  test_wd: 0.02
-  dropoutRate: 0.5
-  kernLength: 64
-  F1: 8
-  D: 2
-  F2: 16
+  target_modules: ["proj","qkv","fc1"]
 
 
 test:
   n_epochs: 40
   shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots for few-shot learning; if 0, will do standard testing without fine-tuning
-  n_repeats: 2  # number of repeats for few-shot learning (with different random samples each time)
+  n_repeats: 10  # number of repeats for few-shot learning (with different random samples each time)
   models: ["labram"] # list of models to test; options are "deepconvnet", "eegnet", "labram"
   save_dir_root: "results/lomso" # directory to save results and checkpoints; <experiment_name> will be replaced with the actual experiment name
 
 lomso:
-  max_folds: null # set to an integer to limit the number of folds for development purposes; if null, will use all folds
   test_only: true # if true, will only run testing without training
 
   # this will build the folowing paths: <train_root/test_root>/<test_root>/<subdir>/
