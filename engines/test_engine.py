@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.func import functional_call
 import pandas as pd
-from engines.meta_helpers import (
+from engines.utils import (
     sample_support,
     sample_query,
     fetch_by_indices,

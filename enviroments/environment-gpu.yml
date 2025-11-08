@@ -1,4 +1,4 @@
-name: eeg2
+name: labram-lora-gpu
 channels:
   - pytorch
   - nvidia

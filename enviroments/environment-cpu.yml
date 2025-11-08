@@ -12,7 +12,6 @@ dependencies:
   - h5py
   - pyyaml
   - matplotlib
-  # CPU PyTorch stack
   - pytorch=2.4.*
   - torchvision=0.19.*
   - torchaudio=2.4.*
@@ -26,7 +25,6 @@ dependencies:
       - accelerate
       - safetensors
       - einops
-      # PyG deps: pull wheels built for torch==2.4.x, cpu-only
       - torch-scatter
       - torch-sparse
       - torch-geometric

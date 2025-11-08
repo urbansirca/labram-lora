@@ -266,29 +266,20 @@ class DeepConvNet(nn.Module):
     def forward(self, x, **kwargs):
         """
         Accepts (B, C, T) or (B, C, P, T). Returns network output.
-
-        This mirrors the simple forward used in `EEGNet.forward` while
-        preserving the expected input layout for this architecture.
         """
         # If input has patches dimension, flatten it into time
         if x.ndim == 4:
             # (B, C, P, T) -> (B, C, P*T)
-            # print("dimension is ", x.shape)
-            # print("DeepConvNet reshaping input from (B,C,P,T) to (B,C,P*T)")
             b, c, p, t = x.shape
             x = x.reshape(b, c, p * t)
-            # print("dimension is ", x.shape)
 
         elif x.ndim != 3:
             raise ValueError(
                 f"DeepConvNet expects (B,C,T) or (B,C,P,T), got shape {tuple(x.shape)}"
             )
 
-        # print("DeepConvNet input shape:", x.shape)  # Debug print
-        # Braindecode DeepConvNet expects input as (B, C, T, 1)
         x = x.unsqueeze(-1)
         out = self.model(x)
-        # print("DeepConvNet output shape:", out.shape)  # Debug print
         return out
 
 

@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 
 from train import get_engine
-from meta_train import get_meta_engine
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -16,19 +15,12 @@ logger = logging.getLogger(__name__)
 
 from .testing_utils import build_subject_list, get_checkpoint_file
 
-def run_lomso(config_path: str, with_meta: bool = False, run_loso: bool = False):
+def run_lomso(config_path: str, run_loso: bool = False):
     with open(config_path, "r") as f:
         base_cfg = yaml.safe_load(f)
         
     max_folds = base_cfg.get("lomso").get("max_folds")
     test_only = base_cfg.get("lomso").get("test_only")
-
-    # if run_loso and test_only:
-    #     raise ValueError(
-    #         "Invalid configuration: '--run-loso' and 'test_only: true' cannot be used together.\n"
-    #         "LOMSO mode performs fold-based training/testing, whereas 'test_only' "
-    #         "disables training entirely."
-    #     )
 
     # ---- subjects / folds ----------------------------------------------------
     subjects = build_subject_list(base_cfg)
@@ -124,14 +116,9 @@ def run_lomso(config_path: str, with_meta: bool = False, run_loso: bool = False)
                     raise ValueError(f"Unknown model name {model_name}")
 
             # create engine and tester
-            if with_meta:
-                engine, tester = get_meta_engine(
-                    cfg, with_tester=True, experiment_name=experiment_name
-                )
-            else:
-                engine, tester = get_engine(
-                    cfg, with_tester=True, experiment_name=experiment_name
-                )
+            engine, tester = get_engine(
+                cfg, with_tester=True, experiment_name=experiment_name
+            )
             # Make engine and tester use the lomso folder as its checkpoint root
             engine.checkpoint_root = dest
             tester.save_dir = dest

@@ -1,41 +1,18 @@
 import math
 import random
-from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import h5py
 import torch
-from torch.utils.data import Dataset, Sampler
-from preprocessing.preprocess_KU_data import get_ku_dataset_channels
-import numpy as np
-
-# --- add near top of file ---
-MIREPNET_45 = [
-    "FP1","FP2","F7","F3","FZ","F4","F8","AF7","AF3","AF4","AF8",
-    "FC5","FC3","FC1","FC2","FC4","FC6",
-    "C5","C3","C1","CZ","C2","C4","C6",
-    "T7","T8",
-    "CP5","CP3","CP1","CPZ","CP2","CP4","CP6",
-    "P7","P3","PZ","P2","P4","P8",
-    "PO3","POZ","PO4","O1","OZ","O2",
-]
-
-
-
-
+from torch.utils.data import Dataset
 
 @dataclass
 class SplitConfig:
-    # LOMSO:
     subject_ids: List[int]
     m_leave_out: Optional[int] = None
     subject_ids_leave_out: Optional[List[int]] = None
-
-    # Train/Validation
     train_proportion: float = 0.9
-
-    # Reproducibility
     seed: int = 111
 
     def __post_init__(self):
@@ -87,42 +64,15 @@ class KUTrialDataset(Dataset):
         dataset_path: str,
         subject_ids: List[int],
         as_float32: bool = True,
-        verbose: bool = True,  # Control debug output
-        select_mirepnet_45: bool = False,  # Select MIREPNet 45 channels
     ):
         self.dataset_path = str(dataset_path)
         self.subject_ids = list(subject_ids)
         self.as_float32 = as_float32
         self._file = None
-        
-        # FOR MIREPNET ---
-        self.select_mirepnet_45 = select_mirepnet_45
-        if self.select_mirepnet_45:
-            MIREPNET_45 = [
-                "FP1","FP2","F7","F3","FZ","F4","F8","AF7","AF3","AF4","AF8",
-                "FC5","FC3","FC1","FC2","FC4","FC6",
-                "C5","C3","C1","CZ","C2","C4","C6",
-                "T7","T8",
-                "CP5","CP3","CP1","CPZ","CP2","CP4","CP6",
-                "P7","P3","PZ","P2","P4","P8",
-                "PO3","POZ","PO4","O1","OZ","O2",
-            ]
-
-            ku62 = get_ku_dataset_channels()
-            name_to_idx = {ch: i for i, ch in enumerate(ku62)}
-            missing = [ch for ch in MIREPNET_45 if ch not in name_to_idx]
-            if missing:
-                raise ValueError(f"Missing channels in KU data: {missing}")
-            self._select_idx = np.asarray([name_to_idx[ch] for ch in MIREPNET_45], dtype=np.int64)
 
         # Build index: [(sid, trial_idx), ...]
         with h5py.File(self.dataset_path, "r") as f:
             self._index: List[Tuple[int, int]] = []
-
-            if verbose:
-                print(f"\n=== DATASET STRUCTURE ANALYSIS ===")
-                print(f"Dataset path: {self.dataset_path}")
-                print(f"Subject IDs: {self.subject_ids}")
 
             # Optimized: Assume all subjects have same number of trials
             # Check first subject to get trial count, then apply to all
@@ -149,11 +99,6 @@ class KUTrialDataset(Dataset):
                 self._index.extend((sid, i) for i in range(n_trials_per_subject) if sid not in inconsistent)
 
             total_trials = len(self._index)
-            if verbose:
-                print(f"Total trials across all subjects: {total_trials}")
-                print(f"Index structure: [(subject_id, trial_idx), ...]")
-                print(f"First 5 index entries: {self._index[:5]}")
-                print("=" * 40)
 
     @property
     def file(self) -> h5py.File:
@@ -173,11 +118,6 @@ class KUTrialDataset(Dataset):
         X_np = grp["X"][t]  # (C, P, T)
         Y_np = grp["Y"][t]  # scalar
         
-        if self.select_mirepnet_45 and self._select_idx is not None:
-            X_np = X_np[self._select_idx, :]
-            # assert X_np.shape == (45, 4, 250), f"got {X_np.shape}, expected (45, 4, 250)"
-            assert X_np.shape == (45, 5, 200), f"got {X_np.shape}, expected (45, 5, 200)"
-
         X = (
             torch.from_numpy(X_np).float()
             if X_np.dtype != np.float32

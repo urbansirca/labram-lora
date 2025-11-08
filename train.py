@@ -1,7 +1,8 @@
+from collections import defaultdict
 import logging
 from datetime import datetime
 from pathlib import Path
-
+import re
 import yaml
 import torch
 import torch.nn as nn
@@ -9,13 +10,88 @@ from torch.utils.data import DataLoader
 import numpy
 
 from engines import Engine
-from models import EEGNet, load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
+from models import load_labram, DeepConvNet, load_labram_with_adapter, freeze_all_but_head_labram, freeze_all_but_head_deepconvnet
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from engines import TestEngine
 from preprocessing.preprocess_KU_data import get_ku_dataset_channels, get_dreyer_dataset_channels, get_nikki_dataset_channels
 
 
-from meta_train import set_partial_finetune_labram
+def set_partial_finetune_labram(model, mode="last_k", k=8, verbose=True):
+    """
+    Freeze everything, then unfreeze:
+      - head (always)
+      - last k transformer blocks (if mode='last_k')
+      - all transformer blocks (if mode='all')
+      - head only (if mode='linear_probe')
+
+    Assumes block params are named like 'blocks.<idx>.*' (as your summary shows).
+    We intentionally keep embeddings (pos_embed, time_embed, patch_embed, cls_token) FROZEN
+    to mirror the paper's 'Transformer blocks' language.
+    """
+    # 0) freeze all
+    for _, p in model.named_parameters():
+        p.requires_grad = False
+
+    # 1) find transformer blocks (by name)
+    block_map = defaultdict(list)  # idx -> [param names]
+    for n, p in model.named_parameters():
+        m = re.search(r"(^|\.)(blocks)\.(\d+)\.", n)
+        if m:
+            idx = int(m.group(3))
+            block_map[idx].append(n)
+
+    all_block_ids = sorted(block_map.keys())
+    if verbose:
+        print(f"[partial-ft] Found {len(all_block_ids)} transformer blocks: {all_block_ids}")
+    if not all_block_ids:
+        print("[partial-ft][WARN] No blocks.*.* matched; update the regex to your model naming.")
+    
+    # 2) decide which blocks to unfreeze
+    to_unfreeze = set()
+    if mode == "all":
+        to_unfreeze = set(all_block_ids)
+    elif mode == "last_k":
+        assert isinstance(k, int) and k > 0, "k must be a positive int"
+        to_unfreeze = set(all_block_ids[-k:])
+    elif mode == "linear_probe":
+        to_unfreeze = set()  # only head below
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
+
+    name_to_param = dict(model.named_parameters())
+    # 3) unfreeze chosen blocks
+    for idx in to_unfreeze:
+        for pname in block_map.get(idx, []):
+            name_to_param[pname].requires_grad = True
+
+    # 4) always unfreeze classification head
+    head_hits = 0
+    for n, p in model.named_parameters():
+        ln = n.lower()
+        if ("head." in ln) or ln.endswith("head.weight") or ln.endswith("head.bias") \
+           or (".classifier." in ln) or ln.endswith(".classifier.weight") or ln.endswith(".classifier.bias") \
+           or ln.endswith(".fc.weight") or ln.endswith(".fc.bias"):
+            p.requires_grad = True
+            head_hits += 1
+    if verbose:
+        print(f"[partial-ft] Unfroze head params: {head_hits} tensors")
+        print(f"[partial-ft] Unfroze block ids: {sorted(list(to_unfreeze))}")
+
+    # 5) report
+    total = sum(p.numel() for _, p in model.named_parameters())
+    trainable = sum(p.numel() for _, p in model.named_parameters() if p.requires_grad)
+    print("\n========== PARTIAL FINE-TUNING SUMMARY ==========")
+    print(f"Mode: {mode}{'' if mode!='last_k' else f' (k={k})'}")
+    print(f"Total parameters:     {total:,}")
+    print(f"Trainable parameters: {trainable:,} ({trainable/total:.2%})")
+    by_prefix = defaultdict(int)
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            by_prefix[n.split('.')[0]] += p.numel()
+    print("\nBy top-level prefix (trainable):")
+    for pref, cnt in sorted(by_prefix.items(), key=lambda x: -x[1]):
+        print(f"  {pref:<20} → {cnt:,d} parameters")
+    print("-------------------------------------------------\n")
 # ---------------- logging ----------------
 logging.basicConfig(
     level=logging.INFO,
@@ -47,20 +123,11 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
     USE_AMP = opt_cfg.get("use_amp")
 
     electrodes = data_cfg.get("electrodes")
-    if electrodes is None and "dreyer" in data_cfg.get("path").lower():
-        electrodes = get_dreyer_dataset_channels()  # Dreyer uses the same 32 channels as KU
-        logger.info(f"USING DREYER 27 CHANNELS: {electrodes}")
-        
-    elif electrodes is None and "ku" in data_cfg.get("path").lower():
+    if electrodes is None and "ku" in data_cfg.get("path").lower():
         electrodes = get_ku_dataset_channels()
         logger.info(f"USING KU CHANNELS: {electrodes}")
-    
-    elif electrodes is None and "nikki" in data_cfg.get("path").lower():
-        electrodes = get_nikki_dataset_channels()
-        logger.info(f"USING NIKKI CHANNELS: {electrodes}")
     else:
         raise ValueError("Please provide electrode list in config for non-KU datasets.")
-    # logger.info(f"USING ELECTRODES: {electrodes}")
 
     # ---------------- model ------------------
     model_name = exp_cfg["model"].lower()
@@ -83,8 +150,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             
             if hyperparameters["head_only_train"]:
                 model = freeze_all_but_head_labram(model)
-                
-
         elif model_name == "deepconvnet":
             hyperparameters = config.get("deepconvnet")
             model_str = "deepconvnet"
@@ -130,39 +195,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
             if hyperparameters["head_only_train"]:
                 assert hyperparameters["checkpoint_file"] is not None, "When using head_only_train, a checkpoint_file must be specified to load the pretrained weights from."
                 model = freeze_all_but_head_deepconvnet(model)
-
-        elif model_name == "eegnet":
-            hyperparameters = config.get("eegnet")
-            chans = data_cfg.get("input_channels")
-            samples = data_cfg.get("samples")
-            classes = data_cfg.get("num_classes")
-            model = EEGNet(
-                nb_classes=classes,
-                Chans=chans,
-                Samples=samples,
-                dropoutRate=hyperparameters.get("dropoutRate"),
-                kernLength=hyperparameters.get("kernLength"),
-                F1=hyperparameters.get("F1"),
-                D=hyperparameters.get("D"),
-                F2=hyperparameters.get(
-                    "F2", hyperparameters.get("F1") * hyperparameters.get("D")
-                ),
-            )
-            print("MODEL",model)
-            model_str = "eegnet"
-            
-        elif model_name == "mirepnet":
-            hyperparameters = config.get("mirepnet")
-            model_str = "mirepnet"
-            from models.mirepnet import make_mirepnet
-            model = make_mirepnet(
-                use_lora=hyperparameters.get("use_lora"),
-                lora_config=config.get("peft_config"),
-            )
-            if hyperparameters["head_only_train"]:
-                logger.warning("head_only_train is not implemented for MIREPNet yet.")
-                raise NotImplementedError
-            
         else:
             raise ValueError("Invalid model")
 
@@ -304,7 +336,6 @@ def get_engine(config, with_tester = False, experiment_name = None, model = None
         # ------------------------------------------------------------------------
 
         if isinstance(model, list):
-
             if OPTIMIZER.lower() == "adamw":
                 return torch.optim.AdamW(model, lr=lr, weight_decay=wd)
             elif OPTIMIZER.lower() == "adam":

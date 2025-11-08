@@ -1,5 +1,3 @@
-
-
 experiment:
   name: null 
   model: "labram" # "deepconvnet" or "eegnet" or "labram". for lomso not used
