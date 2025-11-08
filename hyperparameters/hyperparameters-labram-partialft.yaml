@@ -67,7 +67,7 @@ peft_config:
 
 test:
   n_epochs: 20
-  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots per class
+  shots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25] # number of shots PER CLASS!!
   n_repeats: 10
   model: "labram"
   model_folder_name: "labram-partialft" # folder name where model is saved

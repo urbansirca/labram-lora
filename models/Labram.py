@@ -8,6 +8,8 @@ import yaml
 import logging
 from peft import PeftModel
 from pathlib import Path
+import re
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -135,3 +137,43 @@ def load_labram_with_adapter(adapter_dir: str, device="cpu"):
     )
 
     return model
+
+
+def set_partial_finetune_labram(model, verbose=True):
+    k = 8
+    # 0) freeze all
+    for _, p in model.named_parameters():
+        p.requires_grad = False
+
+    # find transformer blocks (by name)
+    block_map = defaultdict(list)  # idx -> [param names]
+    for n, p in model.named_parameters():
+        m = re.search(r"(^|\.)(blocks)\.(\d+)\.", n)
+        if m:
+            idx = int(m.group(3))
+            block_map[idx].append(n)
+
+    all_block_ids = sorted(block_map.keys())
+    if verbose:
+        print(f"[partial-ft] Found {len(all_block_ids)} transformer blocks: {all_block_ids}")
+    
+    # decide which blocks to unfreeze
+    to_unfreeze = set()
+    to_unfreeze = set(all_block_ids[-k:])
+
+    name_to_param = dict(model.named_parameters())
+    # unfreeze chosen blocks
+    for idx in to_unfreeze:
+        for pname in block_map.get(idx, []):
+            name_to_param[pname].requires_grad = True
+
+    # unfreeze classification head
+    head_hits = 0
+    for n, p in model.named_parameters():
+        ln = n.lower()
+        if ("head." in ln):
+            p.requires_grad = True
+            head_hits += 1
+    if verbose:
+        print(f"[partial-ft] Unfroze head params: {head_hits} tensors")
+        print(f"[partial-ft] Unfroze block ids: {sorted(list(to_unfreeze))}")

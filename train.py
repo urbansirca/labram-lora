@@ -9,87 +9,10 @@ from torch.utils.data import DataLoader
 import numpy
 
 from engines import Engine
-from models import load_labram, DeepConvNet, load_labram_with_adapter
+from models import load_labram, DeepConvNet, load_labram_with_adapter, set_partial_finetune_labram
 from subject_split import KUTrialDataset, SplitConfig, SplitManager
 from preprocessing.preprocess_KU_data import get_ku_dataset_channels
 
-
-def set_partial_finetune_labram(model, mode="last_k", k=8, verbose=True):
-    """
-    Freeze everything, then unfreeze:
-      - head (always)
-      - last k transformer blocks (if mode='last_k')
-      - all transformer blocks (if mode='all')
-      - head only (if mode='linear_probe')
-
-    Assumes block params are named like 'blocks.<idx>.*' (as your summary shows).
-    We intentionally keep embeddings (pos_embed, time_embed, patch_embed, cls_token) FROZEN
-    to mirror the paper's 'Transformer blocks' language.
-    """
-    # 0) freeze all
-    for _, p in model.named_parameters():
-        p.requires_grad = False
-
-    # 1) find transformer blocks (by name)
-    block_map = defaultdict(list)  # idx -> [param names]
-    for n, p in model.named_parameters():
-        m = re.search(r"(^|\.)(blocks)\.(\d+)\.", n)
-        if m:
-            idx = int(m.group(3))
-            block_map[idx].append(n)
-
-    all_block_ids = sorted(block_map.keys())
-    if verbose:
-        print(f"[partial-ft] Found {len(all_block_ids)} transformer blocks: {all_block_ids}")
-    if not all_block_ids:
-        print("[partial-ft][WARN] No blocks.*.* matched; update the regex to your model naming.")
-    
-    # 2) decide which blocks to unfreeze
-    to_unfreeze = set()
-    if mode == "all":
-        to_unfreeze = set(all_block_ids)
-    elif mode == "last_k":
-        assert isinstance(k, int) and k > 0, "k must be a positive int"
-        to_unfreeze = set(all_block_ids[-k:])
-    elif mode == "linear_probe":
-        to_unfreeze = set()  # only head below
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    name_to_param = dict(model.named_parameters())
-    # 3) unfreeze chosen blocks
-    for idx in to_unfreeze:
-        for pname in block_map.get(idx, []):
-            name_to_param[pname].requires_grad = True
-
-    # 4) always unfreeze classification head
-    head_hits = 0
-    for n, p in model.named_parameters():
-        ln = n.lower()
-        if ("head." in ln) or ln.endswith("head.weight") or ln.endswith("head.bias") \
-           or (".classifier." in ln) or ln.endswith(".classifier.weight") or ln.endswith(".classifier.bias") \
-           or ln.endswith(".fc.weight") or ln.endswith(".fc.bias"):
-            p.requires_grad = True
-            head_hits += 1
-    if verbose:
-        print(f"[partial-ft] Unfroze head params: {head_hits} tensors")
-        print(f"[partial-ft] Unfroze block ids: {sorted(list(to_unfreeze))}")
-
-    # 5) report
-    total = sum(p.numel() for _, p in model.named_parameters())
-    trainable = sum(p.numel() for _, p in model.named_parameters() if p.requires_grad)
-    print("\n========== PARTIAL FINE-TUNING SUMMARY ==========")
-    print(f"Mode: {mode}{'' if mode!='last_k' else f' (k={k})'}")
-    print(f"Total parameters:     {total:,}")
-    print(f"Trainable parameters: {trainable:,} ({trainable/total:.2%})")
-    by_prefix = defaultdict(int)
-    for n, p in model.named_parameters():
-        if p.requires_grad:
-            by_prefix[n.split('.')[0]] += p.numel()
-    print("\nBy top-level prefix (trainable):")
-    for pref, cnt in sorted(by_prefix.items(), key=lambda x: -x[1]):
-        print(f"  {pref:<20} → {cnt:,d} parameters")
-    print("-------------------------------------------------\n")
 # ---------------- logging ----------------
 logging.basicConfig(
     level=logging.INFO,
@@ -138,7 +61,7 @@ def get_engine(config, experiment_name = None):
                 hyperparameters["adapter_checkpoint_dir"]
             )
         if hyperparameters.get("lora") == False:
-            set_partial_finetune_labram(model, mode="last_k", k=8)
+            set_partial_finetune_labram(model)
         
     elif model_name == "deepconvnet":
         hyperparameters = config.get("deepconvnet")
@@ -241,7 +164,7 @@ def get_engine(config, experiment_name = None):
         persistent_workers=PERSISTENT_WORKERS,
     )
     train_after_stopping_loader = DataLoader(
-        train_after_stopping_ds,
+        train_after_stopping_ds, #TODO: check this !!
         batch_size=TRAIN_BS,
         shuffle=True,
         num_workers=NUM_WORKERS,
@@ -324,10 +247,7 @@ def get_engine(config, experiment_name = None):
         else:
             _ = model(x=torch.zeros(1, input_channels, samples, device=DEVICE))
 
-
-    checkpoint_dir = Path(str(exp_cfg.get("checkpoint_dir") or (Path(__file__).parent / "weights" / "checkpoints" / experiment_name)))
-
-    engine = Engine(
+    return Engine(
         # --- BASE ---
         model_str=model_str,
         experiment_name=experiment_name,
@@ -346,7 +266,7 @@ def get_engine(config, experiment_name = None):
         save_regular_checkpoints_interval=exp_cfg.get("save_regular_checkpoints_interval"),
         save_best_checkpoints=exp_cfg.get("save_best_checkpoints"),
         save_final_checkpoint=exp_cfg.get("save_final_checkpoint"),
-        checkpoint_dir=checkpoint_dir,
+        checkpoint_dir=Path(str(exp_cfg.get("checkpoint_dir") or (Path(__file__).parent / "weights" / "checkpoints" / experiment_name))),
         # --- SPECIFIC ---
         n_epochs=N_EPOCHS,
         # data loaders
@@ -366,5 +286,3 @@ def get_engine(config, experiment_name = None):
         train_after_stopping=exp_cfg.get("train_after_stopping"),
         train_after_stopping_epochs=exp_cfg.get("train_after_stopping_epochs"),
     )
-
-    return engine
