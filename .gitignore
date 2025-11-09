@@ -165,8 +165,8 @@ cython_debug/
 .vscode/
 
 # Machine Learning specific
-*.pth
-*.pt
+# *.pth
+# *.pt
 *.pkl
 *.pickle
 *.h5
@@ -177,8 +177,8 @@ cython_debug/
 # Data files
 data/
 datasets/
-*.csv
-*.json
+# *.csv
+# *.json
 *.parquet
 *.feather
 
@@ -207,9 +207,16 @@ lomso.yaml
 lomso/
 bug_fix/
 test_only_lomso/
+test_only_lomso_new
 ng_testing/*.job
 
 
 *.job
 
 ng_testing/
+
+*.png
+*.bin
+
+# all README.md files in model_weights
+**/model_weights/**/README.md

@@ -99,7 +99,7 @@ The KU dataset contains EEG recordings from 54 subjects performing motor imagery
 - Final shape: `(epochs, channels, num_patches, patch_size)`
 - Example: `(400, 62, 4, 200)` for 400 trials, 62 channels, 4 patches of 200 samples
 
-#### 6. **Normalization (Critical for Leakage Prevention)**
+#### 6. **Normalization**
 
 The preprocessing supports three normalization modes, all designed to prevent data leakage:
 
@@ -116,17 +116,11 @@ The preprocessing supports three normalization modes, all designed to prevent da
 - Stats shape: `(R, C)` where R = number of runs
 
 
-**C. Per-Trial Normalization (`mode="trial"`):**
+**C. Per-Trial Normalization (`mode="trial"`) - used in our experiments:**
 - Instance normalization: each trial normalized independently
 - Computes mean and std per channel for each trial
 - Stats shape: `(E, C)` where E = number of epochs
-- **Always leakage-safe**: No cross-trial information used
-
-**Support Mask Construction:**
-The preprocessing automatically builds a support mask to identify training trials:
-- Reads the number of training trials from the original `.mat` files
-- Marks training trials as support (True), test trials as query (False)
-- This mask ensures normalization statistics are computed only on training data
+- **Leakage-safe**: No cross-trial information used
 
 #### 7. **Output Format**
 
@@ -225,7 +219,7 @@ The LOSO evaluation process (`testing/LOSO.py` and `run_loso.py`) performs the f
      - Sample N support trials per class from the test subject
      - Fine-tune the model on these support trials
      - Evaluate on remaining query trials
-     - Repeat multiple times with different random seeds
+     - Repeat multiple times (n_repeats)
 
 3. **Results Aggregation:**
    - Results saved per fold in `results/{model_folder_name}/{experiment_name}/test_results/`
@@ -386,45 +380,6 @@ python run_loso.py --model labram-lora
    - `--partition`: GPU partition name (adjust for your cluster)
    - `--gpus-per-node`: Number of GPUs requested
 
-2. **Environment Setup:**
-   - Activates conda environment (`eeg2`)
-   - Sets up Weights & Biases (W&B) for experiment tracking
-   - Changes to project directory
-
-3. **Command Execution:**
-   - Runs LOSO evaluation (or modify to run other scripts)
-
-### Submitting the Job
-
-```bash
-# Submit the job
-sbatch labram-lora.job
-
-# Check job status
-squeue -u $USER
-
-# View output
-tail -f labram-train-<job_id>.out
-```
-
-### Customizing the Job File
-
-- **Adjust walltime** based on expected runtime (LOSO can take many hours)
-- **Change partition** to match your cluster's GPU partitions
-- **Modify command** to run different experiments:
-  ```bash
-  python run_loso.py --model deepconvnet
-  python train.py  # For single-run training
-  ```
-- **Add resource requests** if needed:
-  ```bash
-  #SBATCH --mem=64G
-  #SBATCH --cpus-per-task=8
-  ```
-
-**Security Note:** The job file contains a W&B API key. In production, use environment variables or SLURM's secret management instead of hardcoding keys.
-
----
 
 ## Project Structure
 
@@ -558,112 +513,22 @@ Use `analysis/combine_results.py` to aggregate results across models and folds.
 
 ---
 
-## Data Format (HDF5)
-
-Preprocessed datasets are stored in HDF5 format:
-
-```
-/s{subject_id}/
-  ├── X: (epochs, channels, [patches], time) - float32
-  ├── Y: (epochs,) - int64 (class labels)
-  └── norm/ (optional)
-      ├── mu: normalization statistics
-      └── std: normalization statistics
-```
-
 **Typical shapes:**
 - KU (LaBraM): `(400, 62, 4, 200)` - 400 trials, 62 channels, 4 patches, 200 samples/patch
-- KU (DeepConvNet): `(400, 62, 800)` - 400 trials, 62 channels, 800 time points
-
----
-
-## Tips and Best Practices
-
-1. **LaBraM Input Format:**
-   - Must be 4D: `(B, C, P, T)`
-   - Configure: `n_patches_labram`, `patch_length`, `trial_length` in data config
-
-2. **Normalization:**
-   - Use `trial` normalization for maximum leakage safety
-   - Use `subject` normalization for better signal preservation
-   - Always ensure support/query split awareness
-
-3. **Few-Shot Testing:**
-   - Use lower learning rates for adaptation (`test_lr`)
-   - Increase `n_repeats` for more robust statistics
-   - Monitor adaptation epochs to prevent overfitting
-
-4. **SLURM Jobs:**
-   - Estimate walltime based on number of subjects × training time per fold
-   - Use GPU partitions for faster training
-   - Monitor GPU memory usage
-
-5. **W&B Integration:**
-   - Set `log_to_wandb: true` in config for experiment tracking
-   - Use separate projects for different experiment types
-   - Keep API keys secure (use environment variables)
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-1. **CUDA Out of Memory:**
-   - Reduce batch size in `train.py` (TRAIN_BS, EVAL_BS)
-   - Use gradient accumulation
-   - Reduce model size or LoRA rank
-
-2. **Data Loading Errors:**
-   - Verify HDF5 file paths in config
-   - Check subject IDs match between config and data
-   - Ensure preprocessing completed successfully
-
-3. **Normalization Issues:**
-   - Verify support mask construction in preprocessing
-   - Check normalization statistics are saved correctly
-   - Ensure test data is not used for normalization
-
-4. **LOSO Errors:**
-   - Check all subjects are available in dataset
-   - Verify checkpoint directories are writable
-   - Monitor disk space (checkpoints can be large)
-
----
-
-## Citation
-
-If you use this codebase, please cite the relevant papers:
-- LaBraM: [citation]
-- LoRA: [citation]
-- KU Dataset: [citation]
+- KU (DeepConvNet): `(400, 62, 800)` - 400 trials, 62 channels, 800 time points - reshaped internally by the model.
 
 ---
 
 ## License
 
-[Add license information]
+This project is licensed under the MIT License - see the LICENSE file for details.
 
+Copyright 2025 Urban Sirca & Lovro Brulec
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ---
 
-## Contact
-
-[Add contact information]
-
----
-
-For detailed API documentation, see the source code comments in each module.
-```
-
-This README includes:
-
-1. **KU preprocessing**: Steps, normalization modes, leakage prevention, configuration options
-2. **LOSO evaluation**: Workflow, usage, configuration, output structure
-3. **SLURM job file**: Explanation, customization, submission instructions
-4. **Project structure**: Directory layout
-5. **Configuration**: YAML structure and options
-6. **Models**: LaBraM and DeepConvNet details
-7. **Testing**: TestEngine and evaluation metrics
-8. **Tips and troubleshooting**: Common issues and solutions
-
-The README is structured for both quick reference and detailed understanding.
