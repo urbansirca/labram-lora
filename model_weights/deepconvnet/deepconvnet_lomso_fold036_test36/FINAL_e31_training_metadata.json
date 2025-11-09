@@ -1,0 +1,9 @@
+{
+  "epoch": 31,
+  "train_loss": 0.341593861579895,
+  "train_accuracy": 0.8497058749198914,
+  "scheduler_lr": 0.001,
+  "timestamp": 1760648976.3810081,
+  "experiment_name": "deepconvnet_lomso_fold036_test36",
+  "model_str": "deepconvnet"
+}

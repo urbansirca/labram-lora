@@ -1,0 +1,11 @@
+{
+  "epoch": 1,
+  "train_loss": 0.6583478450775146,
+  "train_accuracy": 0.5916666388511658,
+  "scheduler_lr": 0.001,
+  "val_loss": 0.5880178213119507,
+  "val_accuracy": 0.6612499952316284,
+  "timestamp": 1760790579.1745968,
+  "experiment_name": "eegnet_lomso_fold016_test16",
+  "model_str": "eegnet"
+}

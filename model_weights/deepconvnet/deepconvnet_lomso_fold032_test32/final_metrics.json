@@ -1,0 +1,1 @@
+{"epoch": 31, "train_loss": 0.3328026533126831, "train_accuracy": 0.8512744903564453, "scheduler_lr": 0.001, "best_val_accuracy": 0.6725000143051147, "best_val_loss": Infinity, "best_val_epoch": 0, "patience_counter": 0}

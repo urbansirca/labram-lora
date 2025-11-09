@@ -1,0 +1,9 @@
+{
+  "epoch": 31,
+  "train_loss": 0.34913983941078186,
+  "train_accuracy": 0.8434134721755981,
+  "scheduler_lr": 0.002,
+  "timestamp": 1760474922.2868865,
+  "experiment_name": "labram_lomso_fold003_test3",
+  "model_str": "labram"
+}

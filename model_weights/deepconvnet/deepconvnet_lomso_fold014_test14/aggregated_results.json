@@ -1,0 +1,866 @@
+{
+  "experiment_name": "deepconvnet_lomso_fold014_test14",
+  "test_subjects": [
+    14
+  ],
+  "shots_list": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    15,
+    20,
+    25
+  ],
+  "n_epochs": 20,
+  "aggregated_results": [
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 0,
+      "epochs": 20,
+      "final_accuracy": 0.7824999690055847
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7587939500808716
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7587939500808716
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.6658291220664978
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7763819098472595
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7286431789398193
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.6708542704582214
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7688441872596741
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7562813758850098
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.7412060499191284
+    },
+    {
+      "subject_id": 14,
+      "shots": 1,
+      "epochs": 20,
+      "final_accuracy": 0.766331672668457
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7196969985961914
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7550504803657532
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7601010203361511
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7222222089767456
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7727272510528564
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.75
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7676767706871033
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7878788113594055
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7575757503509521
+    },
+    {
+      "subject_id": 14,
+      "shots": 2,
+      "epochs": 20,
+      "final_accuracy": 0.7272727489471436
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7538070678710938
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7512690424919128
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7690355181694031
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7512690424919128
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7512690424919128
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7461928725242615
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7842639684677124
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7588832378387451
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7563451528549194
+    },
+    {
+      "subject_id": 14,
+      "shots": 3,
+      "epochs": 20,
+      "final_accuracy": 0.7664974331855774
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7474489808082581
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7193877696990967
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.714285671710968
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7219387888908386
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7678571343421936
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7423469424247742
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7576530575752258
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7397959232330322
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.714285671710968
+    },
+    {
+      "subject_id": 14,
+      "shots": 4,
+      "epochs": 20,
+      "final_accuracy": 0.7448979616165161
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7487179636955261
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7769231200218201
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7589743733406067
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7538461685180664
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7846153974533081
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7692307829856873
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.764102578163147
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.728205144405365
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7743589878082275
+    },
+    {
+      "subject_id": 14,
+      "shots": 5,
+      "epochs": 20,
+      "final_accuracy": 0.7435897588729858
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7551546096801758
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.780927836894989
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7139174938201904
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7551546096801758
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7628865838050842
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7474226355552673
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7448453307151794
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7603092789649963
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.7216494679450989
+    },
+    {
+      "subject_id": 14,
+      "shots": 6,
+      "epochs": 20,
+      "final_accuracy": 0.76804119348526
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7590673565864563
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7331606149673462
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7901554107666016
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7435232996940613
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7616580128669739
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7305699586868286
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7512953281402588
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7668393850326538
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7538859844207764
+    },
+    {
+      "subject_id": 14,
+      "shots": 7,
+      "epochs": 20,
+      "final_accuracy": 0.7435232996940613
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7213541865348816
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7395833730697632
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7578125
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7760416865348816
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.765625
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7734375
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7682291865348816
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7578125
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7916666865348816
+    },
+    {
+      "subject_id": 14,
+      "shots": 8,
+      "epochs": 20,
+      "final_accuracy": 0.7630208730697632
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7853403091430664
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7146596908569336
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.764397919178009
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.746073305606842
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7382199168205261
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7303665280342102
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7801046967506409
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.7408376932144165
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.735602080821991
+    },
+    {
+      "subject_id": 14,
+      "shots": 9,
+      "epochs": 20,
+      "final_accuracy": 0.764397919178009
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.75789475440979
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.75789475440979
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7552632093429565
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7815789580345154
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7552632093429565
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7631579041481018
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7157894968986511
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7500000596046448
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.75789475440979
+    },
+    {
+      "subject_id": 14,
+      "shots": 10,
+      "epochs": 20,
+      "final_accuracy": 0.7605263590812683
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7837837934494019
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7675675749778748
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7756757140159607
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.8054054379463196
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7189189195632935
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7702702879905701
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7405405640602112
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7756757140159607
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7621622085571289
+    },
+    {
+      "subject_id": 14,
+      "shots": 15,
+      "epochs": 20,
+      "final_accuracy": 0.7486486434936523
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7388889193534851
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7583333253860474
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7555555701255798
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.75
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7666667103767395
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7666667103767395
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7638888955116272
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7611111402511597
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.7638888955116272
+    },
+    {
+      "subject_id": 14,
+      "shots": 20,
+      "epochs": 20,
+      "final_accuracy": 0.75
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7885714173316956
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7828571200370789
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7828571200370789
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7942857146263123
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7571428418159485
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7742857336997986
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7599999904632568
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7571428418159485
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7599999904632568
+    },
+    {
+      "subject_id": 14,
+      "shots": 25,
+      "epochs": 20,
+      "final_accuracy": 0.7542856931686401
+    }
+  ],
+  "timestamp": 1760634813.3410795
+}

@@ -1,0 +1,138 @@
+{
+  "experiment": {
+    "name": null,
+    "model": "labram",
+    "seed": 111,
+    "dataset": "KU",
+    "optimizer": "AdamW",
+    "scheduler": null,
+    "T_0": 2,
+    "T_mult": 2,
+    "device": "cuda",
+    "log_to_wandb": true,
+    "log_to_wandb_test": false,
+    "wandb_project": "EEG-FM",
+    "n_subjects": 54,
+    "checkpoint_dir": "lomso/individual-subject/labram/labram_lomso_fold031_test31",
+    "save_regular_checkpoints": false,
+    "save_regular_checkpoints_interval": 1,
+    "save_final_checkpoint": true,
+    "save_best_checkpoints": true,
+    "early_stopping": false,
+    "early_stopping_patience": 5,
+    "early_stopping_delta": 0.001,
+    "epochs": 1,
+    "train_after_stopping": true,
+    "train_after_stopping_epochs": 30
+  },
+  "optimizations": {
+    "non_blocking": false,
+    "pin_memory": false,
+    "persistent_workers": false,
+    "num_workers": 0,
+    "use_amp": false,
+    "use_compile": false
+  },
+  "data": {
+    "path": "data/preprocessed/KU_mi_labram_preprocessed_trial_normalized.h5",
+    "electrodes": null,
+    "leave_out": [
+      31
+    ],
+    "m_leave_out": null,
+    "train_proportion": 0.999,
+    "subjects": null,
+    "num_classes": 2,
+    "input_channels": 62,
+    "samples": 800,
+    "n_patches_labram": 4,
+    "patch_length": 200,
+    "trial_length": 800,
+    "fs": 200
+  },
+  "sampler": {
+    "train_batch_size": 250,
+    "eval_batch_size": 250,
+    "drop_last": false,
+    "shuffle_subjects": true,
+    "shuffle_trials": true
+  },
+  "labram": {
+    "lr": 0.002,
+    "weight_decay": 0.002,
+    "lora": true,
+    "adapter_checkpoint_dir": null,
+    "test_lr": 5e-05,
+    "test_wd": 0.05,
+    "head_only_train": false,
+    "head_only_test": false
+  },
+  "deepconvnet": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "checkpoint_file": null,
+    "test_lr": 0.0001,
+    "test_wd": 0.001,
+    "head_only_train": false,
+    "head_only_test": false
+  },
+  "mirepnet": {
+    "lr": 0.01,
+    "weight_decay": 0.0001,
+    "checkpoint_file": null,
+    "test_lr": 0.0001,
+    "test_wd": 0.001,
+    "head_only_train": false,
+    "head_only_test": false,
+    "use_lora": false,
+    "adapter_checkpoint_dir": null
+  },
+  "peft_config": {
+    "r": 2,
+    "lora_alpha": 8,
+    "lora_dropout": 0.5,
+    "target_modules": [
+      "proj",
+      "qkv",
+      "fc1"
+    ]
+  },
+  "eegnet": {
+    "lr": 0.001,
+    "weight_decay": 0.02,
+    "dropoutRate": 0.5,
+    "kernLength": 64,
+    "F1": 8,
+    "D": 2,
+    "F2": 16
+  },
+  "test": {
+    "n_epochs": 20,
+    "shots": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      15,
+      20,
+      25
+    ],
+    "n_repeats": 10,
+    "models": [
+      "labram"
+    ],
+    "save_dir_root": "results/lomso"
+  },
+  "lomso": {
+    "max_folds": null,
+    "test_only": false,
+    "skip_models": []
+  }
+}
