@@ -502,7 +502,7 @@ class DataPreprocessingConfig:
             "labram": {
                 "source_path": source_path,
                 "target_path": target_path,
-                "output_name": "KU_mi_labram_preprocessed_normalized.h5",
+                "output_name": "KU_mi_labram_preprocessed_trial_normalized.h5",
                 "apply_bandpass": True,
                 "bandpass_low": 0.5,
                 "bandpass_high": 100.0,
@@ -515,35 +515,8 @@ class DataPreprocessingConfig:
                 "apply_patching": True,
                 "patch_size": 200,
                 "patch_overlap": 0,
-                "normalize_mode": "subject", 
-            },
-            "neurogpt": {
-                "source_path": source_path,
-                "target_path": target_path,
-                "output_name": "KU_mi_neurogpt_preprocessed.h5",
-                "apply_bandpass": True,
-                "bandpass_low": 0.05,
-                "bandpass_high": 100.0,
-                "apply_notch": True,
-                "notch_frequencies": [50.0, 60.0],
-                "apply_car": True,
-                "original_fs": 1000,
-                "downsample_factor": 4,  # 1000 -> 250 Hz
-                "apply_channel_selection": True,
-                "normalize_mode": "subject",
-            },
-            "minimal": {
-                "source_path": source_path,
-                "target_path": target_path,
-                "output_name": "KU_mi_minimal.h5",
-                "apply_bandpass": False,
-                "apply_notch": False,
-                "apply_car": False,
-                "original_fs": 1000,
-                "downsample_factor": 4,  # Original script behavior
-                "apply_channel_selection": False,
-                "normalize_mode": "subject",
-            },
+                "normalize_mode": "trial", 
+            }
         }
 
         if preset_name not in presets:

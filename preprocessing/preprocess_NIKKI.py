@@ -77,7 +77,3 @@ def csvs_to_h5(input_dir, out_path):
 
 
 csvs_to_h5("/home/usirca/workspace/labram-lora/data/raw/Leeuwis2021/Raw eeg 2", "/home/usirca/workspace/labram-lora/data/preprocessed/nikki/NIKKI_dataset.h5")
-# import h5py
-# with h5py.File("/home/usirca/workspace/labram-lora/data/preprocessed/nikkiNIKKI_dataset.h5", "r") as f:
-#     print(sorted(f.keys())[:20])
-#     print("count:", len(f.keys()))
