@@ -215,6 +215,10 @@ ng_testing/*.job
 
 ng_testing/
 
+plots/
+
+qc_plots/
+
 *.png
 *.bin
 
