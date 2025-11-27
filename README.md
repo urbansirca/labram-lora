@@ -1,3 +1,19 @@
+## Abstract
+
+Calibration remains a major barrier for practical motor-imagery (MI) brain–computer interfaces (BCIs). This study investigates whether the pretrained EEG foundation model LaBraM can support minimal-calibration MI decoding and whether parameter-efficient fine-tuning via LoRA offers an effective and computationally efficient adaptation strategy. Using a 54-subject MI dataset and a leave-one-subject-out evaluation, we compared a CNN baseline (DeepConvNet), partial fine-tuning of LaBraM, and LaBraM with LoRA under controlled few-shot conditions. DeepConvNet achieved the highest overall accuracy across all calibration sizes, while LaBraM with LoRA showed more consistent subject-wise improvements and a steeper adaptation trajectory despite lower overall accuracy. LoRA-tuned LaBraM yielded reliably positive calibration gains across subjects, in contrast to the more variable behavior of the CNN and the instability of LaBraM with partial fine-tuning. In terms of efficiency, LoRA reduced trainable parameters by over two orders of magnitude and shortened the training time per epoch by 35% compared to partial fine-tuning. These findings suggest that, although foundation models currently fall short of specialized CNNs in MI decoding accuracy, parameter-efficient fine-tuning can still deliver fast and robust personalization from limited data, making them a promising solution for scalable plug-and-play MI-BCIs.
+
+---
+
+<p align="center">
+  <img src="plotting/img/rule_based_accuracy_shaded.jpg" width="32%" />
+  <img src="plotting/img/boxplot_shots_0_10.jpg" width="32%" />
+  <img src="plotting/img/test.jpg" width="32%" />
+</p>
+
+*Left: Calibration curve with shaded SD regions | Center: 0-shot vs 10-shot comparison | Right: Accuracy improvement (Δ0→10) with significance*
+
+---
+
 ## Table of Contents
 
 1. [Installation and Setup](#installation-and-setup)
@@ -518,13 +534,6 @@ Publication-ready analysis plots are generated in [plotting/](plotting/) using J
 
 Generated plots are saved in [plotting/img/](plotting/img/):
 
-<p align="center">
-  <img src="plotting/img/rule_based_accuracy_shaded.jpg" width="32%" />
-  <img src="plotting/img/boxplot_shots_0_10.jpg" width="32%" />
-  <img src="plotting/img/test.jpg" width="32%" />
-</p>
-
-*Left: Calibration curve with shaded SD regions | Center: 0-shot vs 10-shot comparison | Right: Accuracy improvement (Δ0→10) with significance*
 
 ---
 
