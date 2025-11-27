@@ -306,7 +306,7 @@ results/
 
 - `repetition_results.csv`: Detailed results for each repetition, shot count, and subject
 - `aggregated_results.json`: Aggregated statistics (mean, std) across repetitions
-- `plots/`: Visualization of few-shot learning curves
+- `plotting/`: Visualization of few-shot learning curves
 
 ---
 
