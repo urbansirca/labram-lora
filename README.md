@@ -511,6 +511,21 @@ Results are saved as CSV and JSON:
 
 Use `analysis/combine_results.py` to aggregate results across models and folds.
 
+### Plots
+
+Publication-ready analysis plots are generated in [plotting/](plotting/) using Jupyter notebooks:
+- [plotting/analysis.ipynb](plotting/analysis.ipynb) - Analysis and visualization
+
+Generated plots are saved in [plotting/img/](plotting/img/):
+
+<p align="center">
+  <img src="plotting/img/rule_based_accuracy_shaded.jpg" width="32%" />
+  <img src="plotting/img/boxplot_shots_0_10.jpg" width="32%" />
+  <img src="plotting/img/test.jpg" width="32%" />
+</p>
+
+*Left: Calibration curve with shaded SD regions | Center: 0-shot vs 10-shot comparison | Right: Accuracy improvement (Δ0→10) with significance*
+
 ---
 
 **Typical shapes:**
